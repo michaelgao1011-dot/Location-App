@@ -1,0 +1,1686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trip Trail</title>
+<meta name="description" content="Track where you go on a trip, save the places you stop, and pin your photos to them.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trip Trail">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#F3F4FA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B0C14" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
+<style>
+/* Layout: the map is the whole screen. A glass "live card" and a floating tab dock sit on top of it;
+   Journal, Buddies and Me slide over the map as full panels. On wide screens the panels become a left column. */
+:root{
+  --bg:#F3F4FA; --card:#FFFFFF; --glass:rgba(255,255,255,.86);
+  --ink:#0E1020; --ink-2:#5A5F7A; --line:#E2E5F1; --fill:#ECEEF7;
+  --pop:#FF3D81; --pop-b:#FF8A3D; --on-pop:#23040F;
+  --buddy:#3D5AFE; --on-buddy:#FFFFFF; --sun:#FFC93C;
+  --ok:#0E9F6E; --danger:#D92D4B;
+  --shadow:0 10px 30px rgba(20,22,50,.16);
+  --f-display:"Bricolage Grotesque",ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI","PingFang SC","Hiragino Sans","Apple SD Gothic Neo","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  --f-body:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans","Apple SD Gothic Neo","Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --dock-h:64px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0B0C14; --card:#161826; --glass:rgba(22,24,38,.84);
+    --ink:#F3F4FB; --ink-2:#9BA0BE; --line:#272A3F; --fill:#1F2234;
+    --pop:#FF5C97; --pop-b:#FF9A57; --on-pop:#23040F;
+    --buddy:#8494FF; --on-buddy:#0B0C14; --sun:#FFD25E;
+    --ok:#3DDC97; --danger:#FF7A8F;
+    --shadow:0 10px 30px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 var(--f-body);-webkit-font-smoothing:antialiased;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+[hidden]{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+:focus-visible{outline:3px solid var(--buddy);outline-offset:2px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.02em}
+h1{font-size:30px;font-weight:800;line-height:1.05}
+h2{font-size:20px;font-weight:800}
+h3{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);font-family:var(--f-body)}
+.num{font-family:var(--f-display);font-variant-numeric:tabular-nums}
+svg.i{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+#app{position:fixed;inset:0;overflow:hidden}
+.stage{position:absolute;inset:0}
+#map{position:absolute;inset:0;background:var(--fill);z-index:0}
+.map-fail{position:absolute;inset:0;display:grid;place-items:center;padding:32px;text-align:center;color:var(--ink-2);z-index:1}
+
+/* ---- floating top bar ---- */
+.top{position:absolute;z-index:500;top:calc(var(--safe-t) + 10px);left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.top>*{pointer-events:auto}
+.pill{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-radius:999px;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow);font-weight:700;min-width:0}
+.pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill.round{width:44px;padding:0;justify-content:center;flex:none}
+.pill.on{color:var(--pop)}
+.top-right{display:flex;gap:8px;flex:none}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ink-2);flex:none}
+.dot.on{background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 25%,transparent)}
+
+/* ---- live card ---- */
+.live{position:absolute;z-index:500;left:12px;right:12px;bottom:calc(var(--safe-b) + var(--dock-h) + 22px);padding:14px;border-radius:28px;background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px}
+.live-row{display:flex;align-items:center;gap:12px}
+.ring{--p:0;width:58px;height:58px;border-radius:50%;flex:none;display:grid;place-items:center;background:conic-gradient(var(--pop) calc(var(--p)*1turn),var(--fill) 0)}
+.ring>div{width:46px;height:46px;border-radius:50%;background:var(--card);display:grid;place-items:center;font:800 14px var(--f-display);font-variant-numeric:tabular-nums}
+.ring.done{background:var(--ok)}
+.ring.idle>div{color:var(--ink-2)}
+.live-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.live-text strong{font:800 18px/1.15 var(--f-display);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-text span{font-size:13px;color:var(--ink-2)}
+.cta{min-height:50px;padding:0 22px;border-radius:999px;font:800 16px var(--f-display);background:linear-gradient(135deg,var(--pop),var(--pop-b));color:var(--on-pop);flex:none;box-shadow:0 6px 18px color-mix(in srgb,var(--pop) 40%,transparent)}
+.cta.halt{background:var(--ink);color:var(--bg);box-shadow:none}
+.cta:active,.btn:active,.tab:active{transform:scale(.97)}
+.live-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;background:var(--fill);border-radius:999px;padding:3px}
+.seg button{min-height:36px;padding:0 13px;border-radius:999px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.seg button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.14)}
+.chip{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:0 13px;border-radius:999px;background:var(--fill);font-size:13px;font-weight:700}
+.chip svg.i{width:17px;height:17px}
+@media (max-width:479px){.chip{width:44px;padding:0;justify-content:center}.chip span{display:none}.chip svg.i{width:20px;height:20px}}
+.spacer{flex:1}
+
+/* ---- tab dock ---- */
+.tabs{position:absolute;z-index:700;left:12px;right:12px;bottom:calc(var(--safe-b) + 10px);height:var(--dock-h);display:grid;grid-template-columns:repeat(4,1fr);padding:6px;border-radius:26px;background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:var(--shadow)}
+.tab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:20px;font-size:11px;font-weight:700;color:var(--ink-2)}
+.tab[aria-current=page]{background:var(--ink);color:var(--bg)}
+.badge{position:absolute;top:5px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--pop);color:var(--on-pop);font:800 11px/18px var(--f-display);text-align:center}
+
+/* ---- panels ---- */
+.panel{position:absolute;inset:0;z-index:600;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--safe-t) + 22px) 16px calc(var(--safe-b) + var(--dock-h) + 34px);display:none;flex-direction:column;gap:18px}
+#app[data-tab=journal] #panel-journal,#app[data-tab=buddies] #panel-buddies,#app[data-tab=me] #panel-me{display:flex}
+.panel>*{flex:none}
+.card{background:var(--card);border-radius:24px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.row>.grow{flex:1;min-width:0}
+.muted{color:var(--ink-2);font-size:14px}
+.stats{display:flex;gap:8px;flex-wrap:wrap}
+.stat{background:var(--card);border-radius:18px;padding:10px 14px;display:flex;flex-direction:column;min-width:84px}
+.stat b{font:800 22px var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--ink-2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 18px;border-radius:999px;background:var(--fill);font-weight:700;text-decoration:none;color:var(--ink)}
+.btn.pri{background:var(--ink);color:var(--bg)}
+.btn.pop{background:linear-gradient(135deg,var(--pop),var(--pop-b));color:var(--on-pop)}
+.btn.danger{color:var(--danger)}
+.btn.sm{min-height:38px;padding:0 14px;font-size:14px}
+.btn[disabled]{opacity:.45}
+.field{width:100%;min-height:48px;padding:0 14px;border-radius:16px;border:2px solid var(--line);background:var(--card);font-size:16px}
+textarea.field{padding:12px 14px;min-height:76px;resize:vertical}
+.field:focus{border-color:var(--buddy);outline:0}
+label.lbl{font-size:13px;font-weight:700;color:var(--ink-2)}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:600}
+.switch input{appearance:none;-webkit-appearance:none;width:52px;height:32px;border-radius:16px;background:var(--line);position:relative;flex:none;cursor:pointer;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.switch input:checked{background:var(--ok)}
+.switch input:checked::after{transform:translateX(20px)}
+
+/* ---- journal ---- */
+.day{display:flex;align-items:baseline;gap:8px;padding:4px 4px 0}
+.day b{font:800 18px var(--f-display)}
+.stop{display:flex;gap:12px;text-align:left;width:100%;background:var(--card);border-radius:22px;padding:14px;align-items:flex-start}
+.stop .n{width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;font:800 15px var(--f-display);flex:none}
+.stop.photo .n{background:var(--pop);color:var(--on-pop)}
+.stop.shared .n{background:var(--buddy);color:var(--on-buddy)}
+.stop .b{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.stop .nm{font-weight:800;font-size:17px;overflow-wrap:anywhere}
+.stop .mt{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.thumbs{display:flex;gap:6px;margin-top:8px;overflow:hidden}
+.thumbs img,.thumbs .more{width:60px;height:60px;border-radius:14px;object-fit:cover;flex:none}
+.thumbs .more{display:grid;place-items:center;background:var(--fill);font:800 15px var(--f-display);color:var(--ink-2)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}
+.grid button{aspect-ratio:1;border-radius:14px;overflow:hidden;background:var(--fill)}
+.grid img{width:100%;height:100%;object-fit:cover;display:block}
+.empty{text-align:center;padding:28px 18px;color:var(--ink-2);display:flex;flex-direction:column;gap:14px;align-items:center}
+.empty b{font:800 20px var(--f-display);color:var(--ink)}
+
+/* ---- buddies ---- */
+.code{font:800 34px var(--f-display);letter-spacing:.14em;font-variant-numeric:tabular-nums}
+.buddy{display:flex;align-items:center;gap:12px}
+.ava{width:44px;height:44px;border-radius:50%;background:var(--buddy);color:var(--on-buddy);display:grid;place-items:center;font:800 18px var(--f-display);flex:none}
+.chat{display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto;padding:4px 2px;min-height:160px}
+.msg{max-width:80%;padding:9px 13px;border-radius:18px;background:var(--fill);align-self:flex-start;overflow-wrap:anywhere;font-size:15px}
+.msg.me{align-self:flex-end;background:var(--buddy);color:var(--on-buddy)}
+.msg.sys{align-self:center;background:none;color:var(--ink-2);font-size:13px;text-align:center}
+.msg small{display:block;font-size:11px;opacity:.7;margin-top:2px}
+
+/* ---- dialogs ---- */
+dialog{border:0;padding:0;color:var(--ink);background:var(--bg);width:min(560px,100vw);max-width:100vw;max-height:92dvh;border-radius:28px 28px 0 0;margin:auto auto 0;overflow:hidden}
+dialog[open]{display:flex;flex-direction:column}
+dialog::backdrop{background:rgba(8,9,20,.55)}
+.dlg-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 16px 8px}
+.dlg-body{padding:8px 16px calc(var(--safe-b) + 18px);overflow-y:auto;display:flex;flex-direction:column;gap:14px;min-height:0}
+#viewer{background:#000;color:#fff;width:100vw;height:100dvh;max-height:100dvh;border-radius:0;margin:0}
+#viewer img{flex:1;min-height:0;width:100%;object-fit:contain}
+.v-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px calc(var(--safe-b) + 12px);background:#101018}
+.v-top{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:calc(var(--safe-t) + 8px) 12px 8px;font-size:13px}
+#viewer .btn{background:#262838;color:#fff}
+#viewer select{min-height:42px;border-radius:999px;border:0;background:#262838;color:#fff;padding:0 12px;max-width:100%}
+#chatDlg{height:92dvh}
+#chatDlg .dlg-body{flex:1}
+.toast{position:fixed;z-index:9999;inset:calc(var(--safe-t) + 66px) auto auto 50%;transform:translateX(-50%);margin:0;border:0;width:max-content;max-width:calc(100vw - 32px);padding:11px 18px;border-radius:22px;background:var(--ink);color:var(--bg);font-weight:700;font-size:14px;box-shadow:var(--shadow)}
+
+/* ---- map pins (tiles are light in both themes, so these use fixed colours) ---- */
+.pin{width:34px;height:34px;border-radius:50%;background:#0E1020;color:#fff;display:grid;place-items:center;font:800 15px var(--f-display);border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+.pin.shared{background:#3D5AFE}
+.pin.pic{width:54px;height:54px;border-radius:18px;background-size:cover;background-position:center;transform:rotate(-5deg);position:relative;color:transparent}
+.pin.pic i{position:absolute;right:-8px;top:-8px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#FF3D81;color:#23040F;font:800 12px/22px var(--f-display);font-style:normal;text-align:center;border:2px solid #fff}
+.me-dot{width:22px;height:22px;border-radius:50%;background:#FF3D81;border:4px solid #fff;box-shadow:0 0 0 0 rgba(255,61,129,.5);animation:pulse 2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 16px rgba(255,61,129,0)}100%{box-shadow:0 0 0 0 rgba(255,61,129,0)}}
+.bud-pin{display:flex;flex-direction:column;align-items:center;gap:2px}
+.bud-pin b{width:38px;height:38px;border-radius:50%;background:#3D5AFE;color:#fff;display:grid;place-items:center;font:800 16px var(--f-display);border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+.bud-pin span{background:#0E1020;color:#fff;font:700 11px var(--f-body);padding:2px 7px;border-radius:9px;white-space:nowrap}
+.bud-pin.stale b{background:#8A8FA8}
+.leaflet-container{font:inherit}
+.leaflet-top.leaflet-left{top:calc(var(--safe-t) + 60px)}
+.leaflet-control-attribution{font-size:10px;border-radius:8px}
+@media (prefers-color-scheme:dark){.leaflet-tile-pane{filter:brightness(.8) contrast(1.05)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---- wide screens: panels become a left column, the map stays visible ---- */
+@media (min-width:900px){
+  #app{display:grid;grid-template-columns:420px 1fr}
+  .side{order:-1;position:relative;border-right:1px solid var(--line);background:var(--bg);overflow:hidden}
+  .stage{position:relative;inset:auto}
+  .panel{padding-top:26px}
+  #app[data-tab=map] #panel-journal{display:flex}
+  .tabs{grid-template-columns:repeat(3,1fr)}
+  .tab[data-tab=map]{display:none}
+  #app[data-tab=map] .tab[data-tab=journal]{background:var(--ink);color:var(--bg)}
+  .live{left:16px;right:auto;bottom:16px;width:440px}
+  dialog{border-radius:28px;margin:auto}
+}
+</style>
+</head>
+<body>
+<div id="app" data-tab="map">
+  <div class="stage">
+    <div id="map"></div>
+    <div class="map-fail" id="mapFail" hidden><p data-i18n="mapFail"></p></div>
+    <div class="top">
+      <button class="pill" id="tripBtn"><svg class="i"><use href="#i-flag"/></svg><span id="tripName"></span></button>
+      <div class="top-right">
+        <button class="pill" id="buddyChip" hidden><span class="dot" id="buddyDot"></span><span id="buddyChipText"></span></button>
+        <button class="pill round" id="recenter" data-i18n-aria="recenter"><svg class="i"><use href="#i-target"/></svg></button>
+      </div>
+    </div>
+    <section class="live" id="liveCard">
+      <div class="live-row">
+        <div class="ring idle" id="ring"><div id="ringText">5:00</div></div>
+        <div class="live-text"><strong id="liveTitle"></strong><span id="liveSub"></span></div>
+        <button class="cta" id="trackBtn"></button>
+      </div>
+      <div class="live-actions">
+        <div class="seg" role="group" data-i18n-aria="trackingMode">
+          <button id="modeAlways" data-mode="always" data-i18n="modeAlways"></button>
+          <button id="modeManual" data-mode="manual" data-i18n="modeManual"></button>
+        </div>
+        <span class="spacer"></span>
+        <button class="chip" id="pinHere" data-i18n-aria="pinHere"><svg class="i"><use href="#i-pin"/></svg><span data-i18n="pinHere"></span></button>
+        <button class="chip" id="addPhotos" data-i18n-aria="addPhotos"><svg class="i"><use href="#i-camera"/></svg><span data-i18n="photos"></span></button>
+      </div>
+    </section>
+  </div>
+
+  <aside class="side">
+    <main class="panel" id="panel-journal">
+      <div><h3 data-i18n="journal"></h3><h1 id="journalTitle"></h1></div>
+      <div class="stats" id="stats"></div>
+      <div class="row"><button class="btn pop" id="addPhotos2"><svg class="i"><use href="#i-camera"/></svg><span data-i18n="addPhotos"></span></button></div>
+      <div id="timeline" style="display:flex;flex-direction:column;gap:10px"></div>
+    </main>
+
+    <main class="panel" id="panel-buddies">
+      <div><h3 data-i18n="buddies"></h3><h1 data-i18n="buddiesTitle"></h1></div>
+      <div class="card">
+        <label class="lbl" for="myName" data-i18n="yourName"></label>
+        <input class="field" id="myName" maxlength="24" autocomplete="nickname" data-i18n-ph="yourNamePh">
+        <label class="switch"><span data-i18n="buddyOn"></span><input type="checkbox" id="shareOn"></label>
+        <p class="muted" id="netStatus"></p>
+      </div>
+      <div class="card" id="codeCard" hidden>
+        <h3 data-i18n="yourCode"></h3>
+        <div class="code" id="myCode"></div>
+        <p class="muted" data-i18n="codeHelp"></p>
+        <div class="row"><button class="btn pri" id="shareInvite"><svg class="i"><use href="#i-send"/></svg><span data-i18n="sendInvite"></span></button></div>
+        <h3 data-i18n="addBuddy" style="margin-top:6px"></h3>
+        <form class="row" id="addBuddyForm">
+          <input class="field grow" id="buddyCode" maxlength="7" autocapitalize="characters" autocomplete="off" spellcheck="false" data-i18n-ph="buddyCodePh" style="width:auto;letter-spacing:.12em;font-weight:800">
+          <button class="btn pop" data-i18n="connect"></button>
+        </form>
+        <label class="switch"><span data-i18n="shareLive"></span><input type="checkbox" id="shareLive"></label>
+      </div>
+      <div id="buddyList" style="display:flex;flex-direction:column;gap:10px"></div>
+      <p class="muted" data-i18n="p2pNote"></p>
+    </main>
+
+    <main class="panel" id="panel-me">
+      <div><h3 data-i18n="me"></h3><h1 data-i18n="settings"></h1></div>
+      <div class="card">
+        <h3 data-i18n="trips"></h3>
+        <div id="tripList" style="display:flex;flex-direction:column;gap:8px"></div>
+        <form class="row" id="newTripForm">
+          <input class="field grow" id="newTripName" maxlength="40" data-i18n-ph="newTripPh" style="width:auto">
+          <button class="btn pri" data-i18n="create"></button>
+        </form>
+      </div>
+      <div class="card" id="curTripCard">
+        <h3 data-i18n="thisTrip"></h3>
+        <input class="field" id="tripRename" maxlength="40" data-i18n-aria="tripNameLabel">
+        <div class="row">
+          <button class="btn sm" id="exportBtn" data-i18n="export"></button>
+          <button class="btn sm" id="importBtn" data-i18n="import"></button>
+          <button class="btn sm danger" id="deleteTrip" data-i18n="deleteTrip"></button>
+        </div>
+        <p class="muted" data-i18n="exportNote"></p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="tracking"></h3>
+        <label class="switch"><span data-i18n="keepAwake"></span><input type="checkbox" id="keepAwake"></label>
+        <p class="muted" data-i18n="trackNote"></p>
+      </div>
+      <div class="card">
+        <label class="lbl" for="langSel" data-i18n="language"></label>
+        <select class="field" id="langSel">
+          <option value="en">English</option><option value="zh">简体中文</option><option value="ja">日本語</option><option value="ko">한국어</option>
+        </select>
+      </div>
+      <div class="card">
+        <h3 data-i18n="tryIt"></h3>
+        <p class="muted" data-i18n="sampleNote"></p>
+        <div class="row"><button class="btn" id="sampleBtn" data-i18n="loadSample"></button></div>
+      </div>
+    </main>
+
+    <nav class="tabs">
+      <button class="tab" data-tab="map"><svg class="i"><use href="#i-map"/></svg><span data-i18n="tabMap"></span></button>
+      <button class="tab" data-tab="journal"><svg class="i"><use href="#i-book"/></svg><span data-i18n="tabJournal"></span></button>
+      <button class="tab" data-tab="buddies"><svg class="i"><use href="#i-users"/></svg><span data-i18n="tabBuddies"></span><span class="badge" id="chatBadge" hidden></span></button>
+      <button class="tab" data-tab="me"><svg class="i"><use href="#i-user"/></svg><span data-i18n="tabMe"></span></button>
+    </nav>
+  </aside>
+</div>
+
+<dialog id="placeDlg">
+  <div class="dlg-head"><h2 id="placeHead"></h2><button class="btn sm" data-close data-i18n="done"></button></div>
+  <div class="dlg-body">
+    <input class="field" id="placeName" maxlength="60" data-i18n-ph="placeNamePh" data-i18n-aria="placeNamePh">
+    <div class="muted" id="placeVisits"></div>
+    <textarea class="field" id="placeNote" maxlength="600" data-i18n-ph="notePh" data-i18n-aria="notePh"></textarea>
+    <div class="grid" id="placePhotos"></div>
+    <div class="row">
+      <button class="btn pop" id="placeAdd"><svg class="i"><use href="#i-camera"/></svg><span data-i18n="addHere"></span></button>
+      <button class="btn" id="placeSend"><svg class="i"><use href="#i-send"/></svg><span data-i18n="sendBuddy"></span></button>
+      <a class="btn" id="placeGmaps" target="_blank" rel="noopener"><svg class="i"><use href="#i-ext"/></svg><span data-i18n="openGmaps"></span></a>
+    </div>
+    <div class="row"><button class="btn sm danger" id="placeDelete" data-i18n="deleteStop"></button></div>
+  </div>
+</dialog>
+
+<dialog id="viewer">
+  <div class="v-top"><span id="vCaption"></span><button class="btn sm" data-close data-i18n="close"></button></div>
+  <img id="vImg" alt="">
+  <div class="v-bar">
+    <button class="btn sm" id="vPrev" data-i18n-aria="prev">‹</button>
+    <button class="btn sm" id="vNext" data-i18n-aria="next">›</button>
+    <select id="vMove" data-i18n-aria="moveTo"></select>
+    <span class="spacer"></span>
+    <button class="btn sm" id="vSend"><svg class="i"><use href="#i-send"/></svg></button>
+    <button class="btn sm" id="vDelete" data-i18n="delete"></button>
+  </div>
+</dialog>
+
+<dialog id="chatDlg">
+  <div class="dlg-head"><h2 id="chatHead"></h2><button class="btn sm" data-close data-i18n="close"></button></div>
+  <div class="dlg-body">
+    <div class="chat" id="chatLog"></div>
+    <form class="row" id="chatForm">
+      <input class="field grow" id="chatInput" maxlength="500" autocomplete="off" data-i18n-ph="messagePh" style="width:auto">
+      <button class="btn pop" data-i18n-aria="send"><svg class="i"><use href="#i-send"/></svg></button>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="askDlg">
+  <div class="dlg-head"><h2 id="askHead"></h2></div>
+  <div class="dlg-body">
+    <p class="muted" id="askText"></p>
+    <div class="row"><button class="btn pop" id="askYes"></button><button class="btn" id="askNo"></button></div>
+  </div>
+</dialog>
+
+<input type="file" id="filePick" accept="image/*" multiple hidden>
+<input type="file" id="importPick" accept=".json,application/json" hidden>
+<div class="toast" id="toast" popover="manual" role="status" hidden></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 0 2 2h13"/><path d="M9 8h6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.900 2.100 6.500 5.500"/><circle cx="17.500" cy="9" r="2.500"/><path d="M18 14.500c2 .400 3.300 2 3.700 4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 4-6.500 8-6.500s7.200 2.500 8 6.500"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.500-2.500h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.500"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.200 7-11.500a7 7 0 1 0-14 0C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.500"/><circle cx="12" cy="12" r="1.500"/><path d="M12 2v3.500M12 18.500V22M2 12h3.500M18.500 12H22"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2.500 4.500L17 13H5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></symbol>
+</svg>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<script>
+'use strict';
+/* ---------- Languages ----------
+   To add a language: copy the `en` block, translate the values, and add an <option> to #langSel. */
+const I18N = {
+en: {
+  mapFail:"The map couldn't load. Check your connection and reopen the app. Tracking still works.",
+  recenter:"Centre on me", trackingMode:"Tracking mode", modeAlways:"Always on", modeManual:"Manual",
+  pinHere:"Pin here", photos:"Photos", journal:"Journal", addPhotos:"Add photos",
+  buddies:"Buddies", buddiesTitle:"Travel together", yourName:"Your name", yourNamePh:"What should buddies call you?",
+  buddyOn:"Buddy sharing", yourCode:"Your buddy code",
+  codeHelp:"Give this code to your travel buddy, or type theirs below. You both need the app open.",
+  sendInvite:"Send invite", addBuddy:"Add a buddy", buddyCodePh:"CODE", connect:"Connect",
+  shareLive:"Share my live location",
+  p2pNote:"Sharing goes straight from phone to phone and nothing is stored on a server. It only works while you both have the app open, and some mobile networks block it.",
+  me:"Me", settings:"Settings", trips:"Trips", newTripPh:"New trip name", create:"Create",
+  thisTrip:"This trip", tripNameLabel:"Trip name", export:"Export", import:"Import", deleteTrip:"Delete trip",
+  exportNote:"Export saves your route and stops as a file. Photos stay on this device.",
+  tracking:"Tracking", keepAwake:"Keep the screen on while tracking",
+  trackNote:"Always on starts tracking every time the app opens. Manual tracks only between Start and Stop. Phones pause location for web apps when the screen locks or you switch apps. When you come back, time spent at the same spot still counts.",
+  language:"Language", tryIt:"Try it out", sampleNote:"Load a sample day to see how stops, routes and photos look.", loadSample:"Load sample trip",
+  tabMap:"Map", tabJournal:"Journal", tabBuddies:"Buddies", tabMe:"Me",
+  done:"Done", placeNamePh:"Name this place", notePh:"Add a note", addHere:"Add photos here", sendBuddy:"Send to buddy",
+  openGmaps:"Google Maps", deleteStop:"Delete this stop", close:"Close", prev:"Previous photo", next:"Next photo",
+  moveTo:"Move photo to", delete:"Delete", messagePh:"Message", send:"Send",
+  start:"Start", stop:"Stop", pause:"Pause",
+  liveOff:"Tracking is off", liveOffSub:"Tap Start when you head out.", livePaused:"Paused", livePausedSub:"Starts again next time you open the app.",
+  finding:"Finding you…", findingSub:"Waiting for a GPS fix.",
+  moving:"On the move", movingSub:"GPS ±{m} m",
+  hereFor:"Here for {time}", savesAt:"Saves as a stop at 5:00", stayedFor:"Here for {dur}",
+  weak:"Weak GPS signal", weakSub:"±{m} m. Step outside for a better fix.",
+  blocked:"Location is blocked", blockedSub:"Allow location for this site in your phone settings.",
+  noGeo:"This browser can't share location", needHttps:"Location needs a secure (https) address.",
+  stopN:"Stop {n}", photoSpot:"Photo spot", fromBuddy:"From {name}",
+  savedStop:"Stop saved: {name}", pinned:"Pinned this spot", needFix:"Waiting for your location…",
+  stops:"stops", km:"km", photosLabel:"photos",
+  emptyTitle:"No stops yet", emptySub:"Start tracking and stay somewhere for 5 minutes, or add photos. Photos with a location make their own pins.",
+  unplaced:"Photos without a place", unplacedSub:"No location or matching time was found. Open one to choose a stop.",
+  min:"{n} min", hr:"{h} h {m} min",
+  adding:"Adding photo {i} of {n}…", added:"{n} added, {p} placed on the map", photoFail:"{n} couldn't be read",
+  byLocation:"placed by photo location", byTime:"placed by photo time", byRoute:"placed from your route", byManual:"placed by you", byBuddy:"from {name}",
+  noPlace:"No place", confirmDelete:"Tap again to delete", tripDefault:"My trip",
+  netOff:"Sharing is off.", netConnecting:"Connecting…", netReady:"Ready. Waiting for your buddy.",
+  netError:"Can't reach the pairing service. Retrying…", netCodeTaken:"This code is in use in another tab or device.",
+  buddyLive:"Live now", buddyOnline:"Connected", buddyOffline:"Offline", away:"{d} away", lastSeen:"seen {ago}",
+  chat:"Chat", find:"Find", remove:"Remove",
+  wantsToJoin:"{name} wants to be your travel buddy", wantsText:"They will see your live location, and you can chat and send each other stops and photos.",
+  accept:"Accept", decline:"Decline",
+  inviteText:"Join me on Trip Trail! Open {url} , go to Buddies and enter my code {code}.",
+  copied:"Copied", connectingTo:"Connecting to {code}…", buddyConnected:"{name} is connected", buddyLeft:"{name} went offline",
+  sentPlace:"Sent {name}", gotPlace:"{who} sent you {name}", sentPhoto:"Photo sent", gotPhoto:"{who} sent you a photo",
+  notConnected:"No buddy is connected right now", nameFirst:"Add your name first", badCode:"That code doesn't look right",
+  queued:"Sends when your buddy is back",
+  sampleName:"Sample: a day in Lisbon", sampleLoaded:"Sample trip loaded", imported:"Trip imported", importFail:"That file isn't a Trip Trail export",
+  storageFail:"This browser is blocking storage, so nothing can be saved. Turn off private browsing.",
+  you:"You", justNow:"just now", agoMin:"{n} min ago", agoHr:"{n} h ago", noBuddies:"No buddies yet", buddy:"Buddy",
+  chipLive:"{n} live", chipBuddies:"Buddies"
+},
+zh: {
+  mapFail:"地图加载失败。请检查网络后重新打开应用。定位记录仍可正常使用。",
+  recenter:"回到我的位置", trackingMode:"记录模式", modeAlways:"全天候", modeManual:"手动",
+  pinHere:"标记此处", photos:"照片", journal:"旅行日志", addPhotos:"添加照片",
+  buddies:"旅伴", buddiesTitle:"结伴同行", yourName:"你的名字", yourNamePh:"旅伴怎么称呼你？",
+  buddyOn:"旅伴共享", yourCode:"你的旅伴码",
+  codeHelp:"把这个码发给你的旅伴，或在下方输入对方的码。双方都需要打开应用。",
+  sendInvite:"发送邀请", addBuddy:"添加旅伴", buddyCodePh:"旅伴码", connect:"连接",
+  shareLive:"共享我的实时位置",
+  p2pNote:"共享内容在两部手机之间直接传输，不会保存在服务器上。只有双方都打开应用时才能使用，部分移动网络可能无法连接。",
+  me:"我的", settings:"设置", trips:"旅程", newTripPh:"新旅程名称", create:"创建",
+  thisTrip:"当前旅程", tripNameLabel:"旅程名称", export:"导出", import:"导入", deleteTrip:"删除旅程",
+  exportNote:"导出会把路线和停留点保存为文件。照片只保存在这台设备上。",
+  tracking:"定位记录", keepAwake:"记录时保持屏幕常亮",
+  trackNote:"“全天候”会在每次打开应用时自动开始记录。“手动”只在开始和停止之间记录。锁屏或切换到其他应用时，手机会暂停网页应用的定位。回到应用后，如果你仍在同一地点，这段时间仍会计入停留。",
+  language:"语言", tryIt:"体验一下", sampleNote:"加载一天的示例行程，看看停留点、路线和照片的效果。", loadSample:"加载示例行程",
+  tabMap:"地图", tabJournal:"日志", tabBuddies:"旅伴", tabMe:"我的",
+  done:"完成", placeNamePh:"给这个地点起个名字", notePh:"添加备注", addHere:"在此添加照片", sendBuddy:"发给旅伴",
+  openGmaps:"Google 地图", deleteStop:"删除这个停留点", close:"关闭", prev:"上一张", next:"下一张",
+  moveTo:"将照片移到", delete:"删除", messagePh:"输入消息", send:"发送",
+  start:"开始", stop:"停止", pause:"暂停",
+  liveOff:"未在记录", liveOffSub:"出发时点“开始”。", livePaused:"已暂停", livePausedSub:"下次打开应用时会自动继续。",
+  finding:"正在定位…", findingSub:"等待 GPS 信号。",
+  moving:"移动中", movingSub:"GPS 精度 ±{m} 米",
+  hereFor:"已停留 {time}", savesAt:"满 5:00 自动保存为停留点", stayedFor:"已停留 {dur}",
+  weak:"GPS 信号弱", weakSub:"±{m} 米。到室外信号会更好。",
+  blocked:"定位已被禁止", blockedSub:"请在手机设置中允许本网站使用定位。",
+  noGeo:"此浏览器无法提供定位", needHttps:"定位需要安全的 https 地址。",
+  stopN:"停留点 {n}", photoSpot:"拍照点", fromBuddy:"来自 {name}",
+  savedStop:"已保存停留点：{name}", pinned:"已标记此处", needFix:"正在等待你的位置…",
+  stops:"停留点", km:"公里", photosLabel:"照片",
+  emptyTitle:"还没有停留点", emptySub:"开始记录并在某处停留 5 分钟，或添加照片。带位置信息的照片会自动生成标记。",
+  unplaced:"未归位的照片", unplacedSub:"没有找到位置或匹配的时间。打开照片可选择停留点。",
+  min:"{n} 分钟", hr:"{h} 小时 {m} 分钟",
+  adding:"正在添加第 {i}/{n} 张…", added:"已添加 {n} 张，{p} 张已放到地图上", photoFail:"{n} 张无法读取",
+  byLocation:"根据照片位置归位", byTime:"根据拍摄时间归位", byRoute:"根据你的路线归位", byManual:"手动归位", byBuddy:"来自 {name}",
+  noPlace:"无地点", confirmDelete:"再点一次确认删除", tripDefault:"我的旅程",
+  netOff:"共享已关闭。", netConnecting:"正在连接…", netReady:"已就绪，等待旅伴连接。",
+  netError:"无法连接配对服务，正在重试…", netCodeTaken:"这个码正在其他标签页或设备上使用。",
+  buddyLive:"实时在线", buddyOnline:"已连接", buddyOffline:"离线", away:"相距 {d}", lastSeen:"{ago}在线",
+  chat:"聊天", find:"定位", remove:"移除",
+  wantsToJoin:"{name} 想成为你的旅伴", wantsText:"对方将能看到你的实时位置，你们可以聊天并互相发送停留点和照片。",
+  accept:"接受", decline:"拒绝",
+  inviteText:"来 Trip Trail 和我一起旅行吧！打开 {url} ，进入“旅伴”并输入我的码 {code}。",
+  copied:"已复制", connectingTo:"正在连接 {code}…", buddyConnected:"{name} 已连接", buddyLeft:"{name} 已离线",
+  sentPlace:"已发送 {name}", gotPlace:"{who} 给你发来了 {name}", sentPhoto:"照片已发送", gotPhoto:"{who} 给你发来了一张照片",
+  notConnected:"现在没有已连接的旅伴", nameFirst:"请先填写你的名字", badCode:"这个码好像不对",
+  queued:"旅伴上线后发送",
+  sampleName:"示例：里斯本的一天", sampleLoaded:"示例行程已加载", imported:"旅程已导入", importFail:"这不是 Trip Trail 的导出文件",
+  storageFail:"此浏览器禁止了存储，无法保存任何内容。请关闭无痕浏览。",
+  you:"你", justNow:"刚刚", agoMin:"{n} 分钟前", agoHr:"{n} 小时前", noBuddies:"还没有旅伴", buddy:"旅伴",
+  chipLive:"{n} 人在线", chipBuddies:"旅伴"
+},
+ja: {
+  mapFail:"地図を読み込めませんでした。通信状況を確認してアプリを開き直してください。記録は引き続き使えます。",
+  recenter:"現在地に戻る", trackingMode:"記録モード", modeAlways:"常時", modeManual:"手動",
+  pinHere:"ここをピン", photos:"写真", journal:"旅の記録", addPhotos:"写真を追加",
+  buddies:"旅仲間", buddiesTitle:"一緒に旅しよう", yourName:"あなたの名前", yourNamePh:"旅仲間に表示する名前",
+  buddyOn:"旅仲間と共有", yourCode:"あなたのバディコード",
+  codeHelp:"このコードを旅仲間に伝えるか、相手のコードを下に入力してください。お互いにアプリを開いておく必要があります。",
+  sendInvite:"招待を送る", addBuddy:"旅仲間を追加", buddyCodePh:"コード", connect:"接続",
+  shareLive:"現在地をリアルタイムで共有",
+  p2pNote:"共有はスマホ同士で直接やり取りされ、サーバーには保存されません。お互いにアプリを開いている間だけ使えます。一部のモバイル回線では接続できないことがあります。",
+  me:"マイページ", settings:"設定", trips:"旅行", newTripPh:"新しい旅行の名前", create:"作成",
+  thisTrip:"この旅行", tripNameLabel:"旅行の名前", export:"書き出し", import:"読み込み", deleteTrip:"旅行を削除",
+  exportNote:"書き出しではルートと滞在地点をファイルに保存します。写真はこの端末に残ります。",
+  tracking:"位置の記録", keepAwake:"記録中は画面をオンのままにする",
+  trackNote:"「常時」はアプリを開くたびに自動で記録を始めます。「手動」は開始から停止までの間だけ記録します。画面をロックしたり他のアプリに切り替えたりすると、スマホはウェブアプリの位置情報を一時停止します。戻ったときに同じ場所にいれば、その時間も滞在として数えます。",
+  language:"言語", tryIt:"試してみる", sampleNote:"サンプルの1日を読み込んで、滞在地点・ルート・写真の表示を確認できます。", loadSample:"サンプルを読み込む",
+  tabMap:"地図", tabJournal:"記録", tabBuddies:"旅仲間", tabMe:"マイページ",
+  done:"完了", placeNamePh:"この場所に名前を付ける", notePh:"メモを追加", addHere:"ここに写真を追加", sendBuddy:"旅仲間に送る",
+  openGmaps:"Google マップ", deleteStop:"この滞在地点を削除", close:"閉じる", prev:"前の写真", next:"次の写真",
+  moveTo:"写真の移動先", delete:"削除", messagePh:"メッセージ", send:"送信",
+  start:"開始", stop:"停止", pause:"一時停止",
+  liveOff:"記録はオフです", liveOffSub:"出発するときに「開始」をタップ。", livePaused:"一時停止中", livePausedSub:"次にアプリを開くと再開します。",
+  finding:"現在地を取得中…", findingSub:"GPS を待っています。",
+  moving:"移動中", movingSub:"GPS ±{m} m",
+  hereFor:"滞在 {time}", savesAt:"5:00 で滞在地点として保存", stayedFor:"滞在 {dur}",
+  weak:"GPS の電波が弱い", weakSub:"±{m} m。屋外に出ると改善します。",
+  blocked:"位置情報がブロックされています", blockedSub:"スマホの設定でこのサイトの位置情報を許可してください。",
+  noGeo:"このブラウザでは位置情報を使えません", needHttps:"位置情報には安全な https のアドレスが必要です。",
+  stopN:"滞在地点 {n}", photoSpot:"撮影スポット", fromBuddy:"{name} から",
+  savedStop:"滞在地点を保存：{name}", pinned:"ここをピンしました", needFix:"現在地を待っています…",
+  stops:"滞在地点", km:"km", photosLabel:"写真",
+  emptyTitle:"まだ滞在地点がありません", emptySub:"記録を開始して同じ場所に5分いるか、写真を追加してください。位置情報付きの写真は自動でピンになります。",
+  unplaced:"場所が未設定の写真", unplacedSub:"位置情報も一致する時刻も見つかりませんでした。写真を開いて滞在地点を選べます。",
+  min:"{n}分", hr:"{h}時間{m}分",
+  adding:"写真を追加中 {i}/{n}…", added:"{n}枚追加、{p}枚を地図に配置", photoFail:"{n}枚は読み込めませんでした",
+  byLocation:"写真の位置情報で配置", byTime:"撮影時刻で配置", byRoute:"ルートから配置", byManual:"手動で配置", byBuddy:"{name} から",
+  noPlace:"場所なし", confirmDelete:"もう一度タップで削除", tripDefault:"私の旅行",
+  netOff:"共有はオフです。", netConnecting:"接続中…", netReady:"準備完了。旅仲間を待っています。",
+  netError:"ペアリングサービスに接続できません。再試行中…", netCodeTaken:"このコードは別のタブか端末で使用中です。",
+  buddyLive:"リアルタイム共有中", buddyOnline:"接続済み", buddyOffline:"オフライン", away:"{d} 先", lastSeen:"{ago}に確認",
+  chat:"チャット", find:"探す", remove:"削除",
+  wantsToJoin:"{name} さんが旅仲間になりたがっています", wantsText:"相手にあなたの現在地が表示され、チャットや滞在地点・写真の送り合いができます。",
+  accept:"承認", decline:"拒否",
+  inviteText:"Trip Trail で一緒に旅しよう！ {url} を開いて「旅仲間」で私のコード {code} を入力してね。",
+  copied:"コピーしました", connectingTo:"{code} に接続中…", buddyConnected:"{name} さんと接続しました", buddyLeft:"{name} さんがオフラインになりました",
+  sentPlace:"{name} を送信しました", gotPlace:"{who} さんから {name} が届きました", sentPhoto:"写真を送信しました", gotPhoto:"{who} さんから写真が届きました",
+  notConnected:"いま接続中の旅仲間がいません", nameFirst:"先に名前を入力してください", badCode:"コードが正しくないようです",
+  queued:"旅仲間が戻ったら送信します",
+  sampleName:"サンプル：リスボンの1日", sampleLoaded:"サンプルを読み込みました", imported:"旅行を読み込みました", importFail:"Trip Trail の書き出しファイルではありません",
+  storageFail:"このブラウザは保存をブロックしているため、何も保存できません。プライベートブラウズをオフにしてください。",
+  you:"あなた", justNow:"たった今", agoMin:"{n}分前", agoHr:"{n}時間前", noBuddies:"旅仲間はまだいません", buddy:"旅仲間",
+  chipLive:"{n}人共有中", chipBuddies:"旅仲間"
+},
+ko: {
+  mapFail:"지도를 불러오지 못했습니다. 연결 상태를 확인하고 앱을 다시 열어 주세요. 위치 기록은 계속 사용할 수 있습니다.",
+  recenter:"내 위치로", trackingMode:"기록 모드", modeAlways:"항상 켜기", modeManual:"수동",
+  pinHere:"여기 핀", photos:"사진", journal:"여행 기록", addPhotos:"사진 추가",
+  buddies:"여행 친구", buddiesTitle:"함께 여행하기", yourName:"내 이름", yourNamePh:"친구에게 보일 이름",
+  buddyOn:"여행 친구 공유", yourCode:"내 친구 코드",
+  codeHelp:"이 코드를 여행 친구에게 알려 주거나, 아래에 친구의 코드를 입력하세요. 둘 다 앱을 열어 두어야 합니다.",
+  sendInvite:"초대 보내기", addBuddy:"친구 추가", buddyCodePh:"코드", connect:"연결",
+  shareLive:"내 실시간 위치 공유",
+  p2pNote:"공유 내용은 휴대폰끼리 직접 전송되며 서버에 저장되지 않습니다. 둘 다 앱을 열어 둔 동안에만 작동하고, 일부 모바일 네트워크에서는 연결되지 않을 수 있습니다.",
+  me:"내 정보", settings:"설정", trips:"여행", newTripPh:"새 여행 이름", create:"만들기",
+  thisTrip:"현재 여행", tripNameLabel:"여행 이름", export:"내보내기", import:"가져오기", deleteTrip:"여행 삭제",
+  exportNote:"내보내기는 경로와 머문 곳을 파일로 저장합니다. 사진은 이 기기에만 남습니다.",
+  tracking:"위치 기록", keepAwake:"기록 중 화면 켜 두기",
+  trackNote:"‘항상 켜기’는 앱을 열 때마다 자동으로 기록을 시작합니다. ‘수동’은 시작과 중지 사이에만 기록합니다. 화면을 잠그거나 다른 앱으로 전환하면 휴대폰이 웹 앱의 위치 정보를 일시 중지합니다. 돌아왔을 때 같은 장소에 있으면 그 시간도 머문 시간으로 계산합니다.",
+  language:"언어", tryIt:"체험해 보기", sampleNote:"샘플 하루 일정을 불러와 머문 곳, 경로, 사진이 어떻게 보이는지 확인하세요.", loadSample:"샘플 여행 불러오기",
+  tabMap:"지도", tabJournal:"기록", tabBuddies:"친구", tabMe:"내 정보",
+  done:"완료", placeNamePh:"이 장소의 이름", notePh:"메모 추가", addHere:"여기에 사진 추가", sendBuddy:"친구에게 보내기",
+  openGmaps:"Google 지도", deleteStop:"이 장소 삭제", close:"닫기", prev:"이전 사진", next:"다음 사진",
+  moveTo:"사진 옮기기", delete:"삭제", messagePh:"메시지", send:"보내기",
+  start:"시작", stop:"중지", pause:"일시 중지",
+  liveOff:"기록이 꺼져 있습니다", liveOffSub:"출발할 때 ‘시작’을 누르세요.", livePaused:"일시 중지됨", livePausedSub:"다음에 앱을 열면 다시 시작합니다.",
+  finding:"위치 찾는 중…", findingSub:"GPS 신호를 기다리고 있습니다.",
+  moving:"이동 중", movingSub:"GPS ±{m} m",
+  hereFor:"{time} 머무는 중", savesAt:"5:00이 되면 머문 곳으로 저장", stayedFor:"{dur} 머무는 중",
+  weak:"GPS 신호 약함", weakSub:"±{m} m. 실외로 나가면 좋아집니다.",
+  blocked:"위치 접근이 차단됨", blockedSub:"휴대폰 설정에서 이 사이트의 위치 접근을 허용해 주세요.",
+  noGeo:"이 브라우저는 위치를 사용할 수 없습니다", needHttps:"위치 기능은 안전한 https 주소가 필요합니다.",
+  stopN:"머문 곳 {n}", photoSpot:"사진 스팟", fromBuddy:"{name}님이 보냄",
+  savedStop:"머문 곳 저장: {name}", pinned:"여기를 핀으로 저장했습니다", needFix:"내 위치를 기다리는 중…",
+  stops:"머문 곳", km:"km", photosLabel:"사진",
+  emptyTitle:"아직 머문 곳이 없습니다", emptySub:"기록을 시작하고 한 곳에 5분 머무르거나 사진을 추가하세요. 위치 정보가 있는 사진은 자동으로 핀이 됩니다.",
+  unplaced:"장소가 없는 사진", unplacedSub:"위치나 일치하는 시간을 찾지 못했습니다. 사진을 열어 장소를 선택하세요.",
+  min:"{n}분", hr:"{h}시간 {m}분",
+  adding:"사진 추가 중 {i}/{n}…", added:"{n}장 추가, {p}장을 지도에 배치", photoFail:"{n}장을 읽지 못했습니다",
+  byLocation:"사진 위치로 배치", byTime:"촬영 시간으로 배치", byRoute:"내 경로로 배치", byManual:"직접 배치", byBuddy:"{name}님이 보냄",
+  noPlace:"장소 없음", confirmDelete:"한 번 더 누르면 삭제", tripDefault:"내 여행",
+  netOff:"공유가 꺼져 있습니다.", netConnecting:"연결 중…", netReady:"준비 완료. 친구를 기다리는 중입니다.",
+  netError:"페어링 서비스에 연결할 수 없습니다. 다시 시도 중…", netCodeTaken:"이 코드는 다른 탭이나 기기에서 사용 중입니다.",
+  buddyLive:"실시간 공유 중", buddyOnline:"연결됨", buddyOffline:"오프라인", away:"{d} 거리", lastSeen:"{ago} 접속",
+  chat:"채팅", find:"찾기", remove:"삭제",
+  wantsToJoin:"{name}님이 여행 친구가 되고 싶어 합니다", wantsText:"상대방이 내 실시간 위치를 볼 수 있고, 채팅하며 머문 곳과 사진을 주고받을 수 있습니다.",
+  accept:"수락", decline:"거절",
+  inviteText:"Trip Trail에서 같이 여행해요! {url} 을 열고 ‘친구’에서 제 코드 {code}를 입력하세요.",
+  copied:"복사했습니다", connectingTo:"{code}에 연결 중…", buddyConnected:"{name}님과 연결되었습니다", buddyLeft:"{name}님이 오프라인입니다",
+  sentPlace:"{name} 보냄", gotPlace:"{who}님이 {name}을(를) 보냈습니다", sentPhoto:"사진을 보냈습니다", gotPhoto:"{who}님이 사진을 보냈습니다",
+  notConnected:"지금 연결된 친구가 없습니다", nameFirst:"먼저 이름을 입력하세요", badCode:"코드가 올바르지 않습니다",
+  queued:"친구가 돌아오면 전송됩니다",
+  sampleName:"샘플: 리스본에서의 하루", sampleLoaded:"샘플 여행을 불러왔습니다", imported:"여행을 가져왔습니다", importFail:"Trip Trail 내보내기 파일이 아닙니다",
+  storageFail:"이 브라우저가 저장을 차단하고 있어 아무것도 저장할 수 없습니다. 사생활 보호 브라우징을 꺼 주세요.",
+  you:"나", justNow:"방금", agoMin:"{n}분 전", agoHr:"{n}시간 전", noBuddies:"아직 여행 친구가 없습니다", buddy:"친구",
+  chipLive:"{n}명 공유 중", chipBuddies:"친구"
+}
+};
+const LOCALE = { en:'en', zh:'zh-CN', ja:'ja', ko:'ko' };
+let LANG = 'en';
+function pickLang(saved){
+  if (saved && I18N[saved]) return saved;
+  const n = (navigator.language || 'en').toLowerCase();
+  return n.startsWith('zh') ? 'zh' : n.startsWith('ja') ? 'ja' : n.startsWith('ko') ? 'ko' : 'en';
+}
+function t(key, vars){
+  let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
+  if (vars) s = s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
+  return s;
+}
+function applyI18n(){
+  document.documentElement.lang = LOCALE[LANG];
+  document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+  document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
+  document.querySelectorAll('[data-i18n-aria]').forEach(e => e.setAttribute('aria-label', t(e.dataset.i18nAria)));
+}
+
+/* ---------- Tunables ---------- */
+const STAY_MS = 5 * 60 * 1000;   // stay this long and the spot is saved as a stop
+const STAY_R = 75;               // metres: fixes this close to the stay centre count as "still here"
+const MAX_ACC = 120;             // ignore GPS fixes less accurate than this (metres)
+const MIN_MOVE = 20;             // metres between recorded route points
+const PHOTO_R = 150;             // a photo taken this close to a stop is filed under it
+const GAP_MS = 10 * 60 * 1000, GAP_M = 300;   // a jump this big is drawn dotted: "wasn't recording here"
+const REVISIT_MS = 15 * 60 * 1000;            // back at the same stop this soon = same visit
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const PEER_LIB = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+
+/* ---------- Small helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const isNum = x => typeof x === 'number' && isFinite(x);
+function dist(a, b) {            // metres between two {lat,lng}
+  const R = 6371000, p = Math.PI / 180, dLat = (b.lat - a.lat) * p, dLng = (b.lng - a.lng) * p;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * p) * Math.cos(b.lat * p) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const F = {
+  time: ms => new Intl.DateTimeFormat(LOCALE[LANG], { hour: 'numeric', minute: '2-digit' }).format(ms),
+  day: ms => new Intl.DateTimeFormat(LOCALE[LANG], { weekday: 'short', month: 'short', day: 'numeric' }).format(ms),
+  dur: ms => { const m = Math.max(1, Math.round(ms / 60000)); return m < 60 ? t('min', { n: m }) : t('hr', { h: Math.floor(m / 60), m: m % 60 }); },
+  clock: ms => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); },
+  m: d => d < 1000 ? Math.max(10, Math.round(d / 10) * 10) + ' m' : (d / 1000).toFixed(1) + ' km',
+  ago: ms => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? t('justNow') : m < 60 ? t('agoMin', { n: m }) : t('agoHr', { n: Math.round(m / 60) }); }
+};
+let toastTimer;
+function toast(msg, ms = 2800) {
+  const el = $('#toast'); el.textContent = msg; el.hidden = false;
+  try { if (el.matches(':popover-open')) el.hidePopover(); el.showPopover(); } catch (e) {}
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { try { el.hidePopover(); } catch (e) {} el.hidden = true; }, ms);
+}
+function confirmTap(btn, fn) {   // destructive buttons need a second tap
+  btn.addEventListener('click', () => {
+    if (btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = btn.dataset.label; fn(); return; }
+    btn.dataset.label = btn.textContent; btn.dataset.armed = '1'; btn.textContent = t('confirmDelete');
+    setTimeout(() => { if (btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = btn.dataset.label; } }, 3000);
+  });
+}
+
+/* ---------- Storage (IndexedDB, on this device only) ---------- */
+const DB = (() => {
+  let p;
+  const open = () => p ??= new Promise((res, rej) => {
+    const r = indexedDB.open('trip-trail', 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      d.createObjectStore('trips', { keyPath: 'id' });
+      d.createObjectStore('points', { keyPath: 'id', autoIncrement: true }).createIndex('trip', 'tripId');
+      d.createObjectStore('places', { keyPath: 'id' }).createIndex('trip', 'tripId');
+      d.createObjectStore('photos', { keyPath: 'id' }).createIndex('trip', 'tripId');
+      d.createObjectStore('chat', { keyPath: 'id' }).createIndex('buddy', 'buddy');
+      d.createObjectStore('files');   // full-size photos, keyed by photo id
+      d.createObjectStore('meta');
+    };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  const run = async (stores, mode, fn) => {
+    const d = await open();
+    return new Promise((res, rej) => {
+      const tx = d.transaction(stores, mode); let out;
+      tx.oncomplete = () => res(out ? out.result : undefined);
+      tx.onerror = tx.onabort = () => rej(tx.error);
+      out = fn(tx);
+    });
+  };
+  return {
+    get: (s, k) => run(s, 'readonly', tx => tx.objectStore(s).get(k)),
+    all: s => run(s, 'readonly', tx => tx.objectStore(s).getAll()),
+    by: (s, idx, k) => run(s, 'readonly', tx => tx.objectStore(s).index(idx).getAll(k)),
+    put: (s, v, k) => run(s, 'readwrite', tx => { tx.objectStore(s).put(v, k); }),
+    del: (s, k) => run(s, 'readwrite', tx => { tx.objectStore(s).delete(k); }),
+    delBy: (s, idx, k) => run(s, 'readwrite', tx => {
+      const st = tx.objectStore(s), r = st.index(idx).openKeyCursor(IDBKeyRange.only(k));
+      r.onsuccess = () => { const c = r.result; if (c) { st.delete(c.primaryKey); c.continue(); } };
+    })
+  };
+})();
+
+/* ---------- State ---------- */
+const S = { trips: [], trip: null, places: [], points: [], photos: [], tracking: false, paused: false,
+  lastFix: null, lastFixAt: 0, follow: true, geoErr: null, watchId: null };
+let CFG = { lang: null, mode: 'manual', keepAwake: true, tracking: false, cand: null, currentTrip: null,
+  name: '', code: null, buddies: [], shareLive: true, shareOn: false };
+let cfgTimer;
+const saveCfg = () => DB.put('meta', CFG, 'cfg').catch(() => {});
+const saveCfgSoon = () => { clearTimeout(cfgTimer); cfgTimer = setTimeout(saveCfg, 1500); };
+
+const firstArr = p => p.visits.length ? p.visits[0].arrive : 0;
+const orderedPlaces = () => [...S.places].sort((a, b) => firstArr(a) - firstArr(b));
+function placeLabel(p) {
+  if (p.name) return p.name;
+  if (p.kind === 'photo') return t('photoSpot');
+  return t('stopN', { n: orderedPlaces().findIndex(x => x.id === p.id) + 1 });
+}
+function nearestPlace(pt, r) {
+  let best = null, bd = r;
+  for (const p of S.places) { const d = dist(p, pt); if (d <= bd) { bd = d; best = p; } }
+  return best;
+}
+function routeLength() {
+  let d = 0;
+  for (let i = 1; i < S.points.length; i++) {
+    const a = S.points[i - 1], b = S.points[i], s = dist(a, b);
+    if (!(b.t - a.t > GAP_MS && s > GAP_M)) d += s;
+  }
+  return d;
+}
+const thumbs = new Map();
+function thumbURL(ph) { if (!thumbs.has(ph.id)) thumbs.set(ph.id, URL.createObjectURL(ph.thumb)); return thumbs.get(ph.id); }
+function dropThumb(id) { const u = thumbs.get(id); if (u) { URL.revokeObjectURL(u); thumbs.delete(id); } }
+
+/* ---------- Trips ---------- */
+async function createTrip(name) {
+  const tr = { id: uid(), name: (name || '').trim() || t('tripDefault'), created: Date.now() };
+  await DB.put('trips', tr); S.trips.push(tr); await loadTrip(tr.id); return tr;
+}
+async function ensureTrip() { if (!S.trip) await createTrip(); return S.trip; }
+async function loadTrip(id) {
+  S.trip = S.trips.find(x => x.id === id) || null;
+  for (const k of [...thumbs.keys()]) dropThumb(k);
+  if (S.trip) {
+    [S.places, S.points, S.photos] = await Promise.all([DB.by('places', 'trip', id), DB.by('points', 'trip', id), DB.by('photos', 'trip', id)]);
+    S.points.sort((a, b) => a.t - b.t);
+  } else { S.places = []; S.points = []; S.photos = []; }
+  if (CFG.currentTrip !== id) { CFG.currentTrip = id; CFG.cand = null; saveCfg(); }
+  renderAll(); renderMe(); fitTrip();
+  S.places.forEach(queueGeocode);
+}
+async function deleteTrip(id) {
+  const photos = await DB.by('photos', 'trip', id);
+  for (const ph of photos) await DB.del('files', ph.id);
+  for (const s of ['points', 'places', 'photos']) await DB.delBy(s, 'trip', id);
+  await DB.del('trips', id);
+  S.trips = S.trips.filter(x => x.id !== id);
+  await loadTrip(S.trips[0] ? S.trips[0].id : null);
+}
+
+/* ---------- Map (Leaflet + OpenStreetMap) ---------- */
+let map = null; const layers = {};
+function initMap() {
+  if (!window.L) { $('#mapFail').hidden = false; return; }
+  map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, worldCopyJump: true }).setView([25, 10], 2);
+  L.control.attribution({ position: 'topleft', prefix: false }).addTo(map);
+  L.tileLayer(TILE_URL, { maxZoom: 19, crossOrigin: true, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+  layers.route = L.polyline([], { color: '#FF3D81', weight: 5, opacity: .95, lineJoin: 'round' }).addTo(map);
+  layers.gaps = L.polyline([], { color: '#FF3D81', weight: 3, opacity: .55, dashArray: '2 9' }).addTo(map);
+  layers.pins = L.layerGroup().addTo(map);
+  layers.buddies = L.layerGroup().addTo(map);
+  map.on('dragstart', () => { S.follow = false; $('#recenter').classList.remove('on'); });
+}
+function drawRoute() {
+  if (!map) return;
+  const solid = [], gaps = []; let cur = [];
+  for (let i = 0; i < S.points.length; i++) {
+    const p = S.points[i], q = S.points[i - 1];
+    if (q && p.t - q.t > GAP_MS && dist(p, q) > GAP_M) { if (cur.length > 1) solid.push(cur); gaps.push([[q.lat, q.lng], [p.lat, p.lng]]); cur = []; }
+    cur.push([p.lat, p.lng]);
+  }
+  if (cur.length > 1) solid.push(cur);
+  layers.route.setLatLngs(solid); layers.gaps.setLatLngs(gaps);
+}
+let routeTimer;
+const drawRouteSoon = () => { if (!routeTimer) routeTimer = setTimeout(() => { routeTimer = 0; drawRoute(); }, 1500); };
+function drawPins() {
+  if (!map) return;
+  layers.pins.clearLayers();
+  orderedPlaces().forEach((p, i) => {
+    const ph = S.photos.filter(x => x.placeId === p.id);
+    const html = ph.length
+      ? `<div class="pin pic" style="background-image:url('${thumbURL(ph[0])}')"><i>${ph.length}</i></div>`
+      : `<div class="pin ${p.kind === 'shared' ? 'shared' : ''}">${i + 1}</div>`;
+    const size = ph.length ? 54 : 34;
+    const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }), zIndexOffset: ph.length ? 400 : 0, title: placeLabel(p) });
+    m.on('click', () => openPlace(p.id));
+    layers.pins.addLayer(m);
+  });
+}
+function drawMe(f) {
+  if (!map) return;
+  if (!layers.me) {
+    layers.acc = L.circle([f.lat, f.lng], { radius: f.acc, color: '#FF3D81', weight: 1, fillOpacity: .08, interactive: false }).addTo(map);
+    layers.me = L.marker([f.lat, f.lng], { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 1000, interactive: false }).addTo(map);
+    if (S.follow) map.setView([f.lat, f.lng], Math.max(map.getZoom(), 16));
+  } else {
+    layers.me.setLatLng([f.lat, f.lng]); layers.acc.setLatLng([f.lat, f.lng]); layers.acc.setRadius(f.acc);
+    if (S.follow) map.panTo([f.lat, f.lng]);
+  }
+}
+function fitTrip() {
+  if (!map) return;
+  const pts = [...S.places.map(p => [p.lat, p.lng]), ...S.points.map(p => [p.lat, p.lng])];
+  if (pts.length > 1) { map.fitBounds(pts, { padding: [50, 50], maxZoom: 16 }); S.follow = false; }
+  else if (pts.length === 1) map.setView(pts[0], 16);
+  else if (S.lastFix) map.setView([S.lastFix.lat, S.lastFix.lng], 16);
+}
+
+/* ---------- Tracking ----------
+   The location source is isolated in watch()/onPos(), so a native wrapper (e.g. Capacitor with a
+   background-geolocation plugin) can feed handleFix() the same {lat,lng,acc,t} for true 24/7 tracking. */
+let fixQ = Promise.resolve();
+function onPos(pos) {
+  const c = pos.coords; S.geoErr = null;
+  const f = { lat: c.latitude, lng: c.longitude, acc: c.accuracy || 0, t: Date.now() };
+  fixQ = fixQ.then(() => handleFix(f)).catch(e => console.error(e));
+}
+function onGeoErr(e) { S.geoErr = e && e.code === 1 ? 'blocked' : 'wait'; renderLive(); }
+function watch() {
+  if (!('geolocation' in navigator)) return;
+  if (S.watchId != null) navigator.geolocation.clearWatch(S.watchId);
+  S.watchId = navigator.geolocation.watchPosition(onPos, onGeoErr, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+}
+function syncWatch() {           // location runs while tracking, or while a buddy is watching our live dot
+  const need = S.tracking || Share.wantsLoc();
+  if (need && S.watchId == null) watch();
+  else if (!need && S.watchId != null) { navigator.geolocation.clearWatch(S.watchId); S.watchId = null; }
+}
+function poll() {                // some phones stop sending updates while you stand still
+  if (S.watchId == null || document.visibilityState !== 'visible') return;
+  navigator.geolocation.getCurrentPosition(onPos, () => {}, { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 });
+}
+async function handleFix(f) {
+  S.lastFix = f; S.lastFixAt = Date.now();
+  drawMe(f); Share.sendLoc(f);
+  if (!S.tracking || f.acc > MAX_ACC) { renderLive(); return; }
+  await ensureTrip();
+  let c = CFG.cand;
+  if (c && c.tripId !== S.trip.id) c = CFG.cand = null;
+  const still = !!c && dist(c, f) <= STAY_R;
+  const lp = S.points[S.points.length - 1];
+  if (!lp || (dist(lp, f) >= Math.max(MIN_MOVE, f.acc * .6) && !(still && c.placeId))) {
+    const p = { tripId: S.trip.id, t: f.t, lat: f.lat, lng: f.lng };
+    S.points.push(p); DB.put('points', p).catch(() => {}); drawRouteSoon();
+  }
+  if (still) {
+    c.n++; c.lat += (f.lat - c.lat) / c.n; c.lng += (f.lng - c.lng) / c.n; c.last = f.t;
+    if (c.placeId) await touchVisit(c, false);
+    else if (!c.muted && c.last - c.start >= STAY_MS) await promoteStay(c);
+  } else {
+    if (c && c.placeId) await touchVisit(c, true);
+    CFG.cand = { tripId: S.trip.id, lat: f.lat, lng: f.lng, start: f.t, last: f.t, n: 1, placeId: null };
+  }
+  saveCfgSoon(); renderLive();
+}
+async function promoteStay(c) {  // the 5 minutes are up: save this spot
+  let p = nearestPlace(c, STAY_R);
+  if (p) {
+    const v = p.visits[p.visits.length - 1];
+    if (v && c.start >= v.arrive && c.start - v.depart < REVISIT_MS) { v.depart = Math.max(v.depart, c.last); c.visit = v.arrive; }
+    else { p.visits.push({ arrive: c.start, depart: c.last }); p.visits.sort((a, b) => a.arrive - b.arrive); c.visit = c.start; }
+    if (p.kind === 'photo') p.kind = 'stay';
+  } else {
+    p = { id: uid(), tripId: S.trip.id, kind: 'stay', lat: c.lat, lng: c.lng, name: '', area: '', note: '', visits: [{ arrive: c.start, depart: c.last }] };
+    S.places.push(p); c.visit = c.start;
+  }
+  c.placeId = p.id;
+  await DB.put('places', p);
+  queueGeocode(p); renderAll();
+  toast(t('savedStop', { name: placeLabel(p) }));
+  if (navigator.vibrate) try { navigator.vibrate(60); } catch (e) {}
+}
+let lastTouch = 0;
+async function touchVisit(c, final) {   // still at a saved stop: push its departure time forward
+  const p = S.places.find(x => x.id === c.placeId);
+  if (!p) { c.placeId = null; c.muted = true; return; }
+  const v = p.visits.find(x => x.arrive === c.visit) || p.visits[p.visits.length - 1];
+  if (!v) return;
+  v.depart = Math.max(v.depart, c.last);
+  if (final || Date.now() - lastTouch > 30000) { lastTouch = Date.now(); await DB.put('places', p); renderJournal(); }
+}
+function startTracking() {
+  if (!('geolocation' in navigator)) { toast(t('noGeo')); return; }
+  if (!window.isSecureContext) toast(t('needHttps'), 5000);
+  S.tracking = true; S.paused = false; S.follow = true; CFG.tracking = true; saveCfg();
+  $('#recenter').classList.add('on');
+  watch(); holdWake(); renderLive();
+}
+function stopTracking() {
+  S.tracking = false; CFG.tracking = false; S.paused = CFG.mode === 'always';
+  const c = CFG.cand; if (c && c.placeId) fixQ = fixQ.then(() => touchVisit(c, true)).catch(() => {});
+  CFG.cand = null; saveCfg(); syncWatch(); dropWake(); renderLive();
+}
+async function pinHere() {       // save the current spot without waiting 5 minutes
+  if (!S.lastFix || Date.now() - S.lastFixAt > 60000) {
+    toast(t('needFix'));
+    if ('geolocation' in navigator) navigator.geolocation.getCurrentPosition(pos => { onPos(pos); fixQ.then(pinHere); }, onGeoErr, { enableHighAccuracy: true, timeout: 15000 });
+    return;
+  }
+  await ensureTrip();
+  const f = S.lastFix, now = Date.now();
+  let p = nearestPlace(f, STAY_R);
+  if (!p) {
+    p = { id: uid(), tripId: S.trip.id, kind: 'stay', lat: f.lat, lng: f.lng, name: '', area: '', note: '', visits: [{ arrive: now, depart: now }] };
+    S.places.push(p); await DB.put('places', p); queueGeocode(p);
+    const c = CFG.cand; if (c && !c.placeId && dist(c, f) <= STAY_R) { c.placeId = p.id; c.visit = now; }
+    renderAll(); toast(t('pinned'));
+  }
+  openPlace(p.id);
+}
+let wake = null;
+async function holdWake() {
+  if (!S.tracking || !CFG.keepAwake || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+  try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+function dropWake() { if (wake) { wake.release().catch(() => {}); wake = null; } }
+
+/* ---------- Place names (OpenStreetMap Nominatim, one request per second at most) ---------- */
+const geoQ = []; let geoBusy = false;
+function queueGeocode(p) { if (!p.name && !p.geoDone && !geoQ.includes(p.id)) { geoQ.push(p.id); pumpGeo(); } }
+async function pumpGeo() {
+  if (geoBusy || !navigator.onLine) return;
+  geoBusy = true;
+  while (geoQ.length) {
+    const p = S.places.find(x => x.id === geoQ[0]);
+    if (!p || p.name) { geoQ.shift(); continue; }
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&accept-language=${LOCALE[LANG]}&lat=${p.lat}&lon=${p.lng}`);
+      if (!r.ok) break;
+      const j = await r.json(), a = j.address || {};
+      const nm = j.name || [a.road, a.house_number].filter(Boolean).join(' ') || a.neighbourhood || a.suburb || '';
+      const area = a.city || a.town || a.village || a.municipality || a.county || '';
+      p.geoDone = true;
+      if (!p.name && (nm || area)) { p.name = String(nm || area).slice(0, 60); p.area = area && area !== p.name ? area : ''; }
+      await DB.put('places', p); renderAll();
+    } catch (e) { break; }
+    geoQ.shift(); await sleep(1200);
+  }
+  geoBusy = false;
+}
+
+/* ---------- Photos: read where and when each one was taken ---------- */
+function findTiff(u) {           // EXIF block = "Exif\0\0" followed by a TIFF header (works for JPEG and HEIC)
+  for (let i = 0; i < u.length - 12; i++) {
+    if (u[i] === 0x45 && u[i + 1] === 0x78 && u[i + 2] === 0x69 && u[i + 3] === 0x66 && u[i + 4] === 0 && u[i + 5] === 0) {
+      const a = u[i + 6], b = u[i + 7];
+      if ((a === 0x49 && b === 0x49 && u[i + 8] === 0x2A && u[i + 9] === 0) || (a === 0x4D && b === 0x4D && u[i + 8] === 0 && u[i + 9] === 0x2A)) return i + 6;
+    }
+  }
+  return -1;
+}
+function parseTiff(dv) {
+  const x = { g: {} }, le = dv.getUint16(0) === 0x4949;
+  const u16 = o => dv.getUint16(o, le), u32 = o => dv.getUint32(o, le);
+  const ifd = (off, fn) => {
+    if (!off || off + 2 > dv.byteLength) return;
+    const n = u16(off);
+    for (let i = 0; i < n; i++) { const e = off + 2 + i * 12; if (e + 12 > dv.byteLength) return; fn(u16(e), u32(e + 4), e + 8); }
+  };
+  const str = (count, vo) => {
+    const o = count > 4 ? u32(vo) : vo; let s = '';
+    for (let i = 0; i < count && o + i < dv.byteLength; i++) { const ch = dv.getUint8(o + i); if (!ch) break; s += String.fromCharCode(ch); }
+    return s.trim();
+  };
+  const rats = vo => { const o = u32(vo), r = []; if (o + 24 > dv.byteLength) return null; for (let i = 0; i < 3; i++) { const d = u32(o + i * 8 + 4); r.push(d ? u32(o + i * 8) / d : 0); } return r; };
+  let exifOff = 0, gpsOff = 0;
+  ifd(u32(4), (tag, count, vo) => { if (tag === 0x8769) exifOff = u32(vo); else if (tag === 0x8825) gpsOff = u32(vo); else if (tag === 0x0132) x.dt0 = str(count, vo); });
+  ifd(exifOff, (tag, count, vo) => { if (tag === 0x9003) x.dt = str(count, vo); else if (tag === 0x9004) x.dt1 = str(count, vo); else if (tag === 0x9011) x.off = str(count, vo); else if (tag === 0x9010) x.off0 = str(count, vo); });
+  ifd(gpsOff, (tag, count, vo) => { const g = x.g; if (tag === 1) g.latRef = str(count, vo); else if (tag === 2) g.lat = rats(vo); else if (tag === 3) g.lngRef = str(count, vo); else if (tag === 4) g.lng = rats(vo); else if (tag === 7) g.time = rats(vo); else if (tag === 0x1D) g.date = str(count, vo); });
+  return x;
+}
+async function readExif(file) {
+  try {
+    const HEAD = 1048576;
+    let u = new Uint8Array(await file.slice(0, HEAD).arrayBuffer()), at = findTiff(u);
+    if (at < 0 && file.size > HEAD) { u = new Uint8Array(await file.slice(Math.max(HEAD, file.size - 524288)).arrayBuffer()); at = findTiff(u); }
+    if (at < 0) return {};
+    return parseTiff(new DataView(u.buffer, u.byteOffset + at, u.byteLength - at));
+  } catch (e) { return {}; }
+}
+function photoMeta(x) {          // -> { lat, lng, t } with nulls where the photo doesn't say
+  const m = { lat: null, lng: null, t: null }, g = x.g || {};
+  if (g.lat && g.lng) {
+    const dd = a => a[0] + a[1] / 60 + a[2] / 3600;
+    let la = dd(g.lat), lo = dd(g.lng);
+    if (g.latRef === 'S') la = -la; if (g.lngRef === 'W') lo = -lo;
+    if (isFinite(la) && isFinite(lo) && (la || lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180) { m.lat = la; m.lng = lo; }
+  }
+  const dt = x.dt || x.dt1 || x.dt0, mm = dt && dt.match(/^(\d{4})\D(\d\d)\D(\d\d)\D(\d\d)\D(\d\d)\D(\d\d)/);
+  if (mm) {
+    const iso = `${mm[1]}-${mm[2]}-${mm[3]}T${mm[4]}:${mm[5]}:${mm[6]}`, off = x.off || x.off0;
+    if (off && /^[+-]\d\d:\d\d$/.test(off)) m.t = Date.parse(iso + off);          // camera recorded its time zone
+    else if (g.date && g.time) {                                                   // work the zone out from GPS time (UTC)
+      const d = g.date.match(/(\d{4})\D(\d\d)\D(\d\d)/), wall = Date.parse(iso + 'Z');
+      if (d) { const utc = Date.UTC(+d[1], d[2] - 1, +d[3], g.time[0], g.time[1], Math.floor(g.time[2])); if (Math.abs(wall - utc) < 15 * 3600e3) m.t = wall - Math.round((wall - utc) / 900000) * 900000; }
+    }
+    if (m.t == null) m.t = Date.parse(iso);                                        // fall back to this phone's time zone
+    if (isNaN(m.t)) m.t = null;
+  }
+  return m;
+}
+function loadImg(blob) {
+  return new Promise((res, rej) => {
+    const u = URL.createObjectURL(blob), im = new Image();
+    im.onload = () => res(im); im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('decode')); };
+    im._u = u; im.src = u;
+  });
+}
+function shrink(im, max, q) {
+  const k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode')), 'image/jpeg', q));
+}
+function placeAtTime(ts, pad) {  // which stop were we at when this photo was taken?
+  for (const p of S.places) if (p.kind !== 'photo') for (const v of p.visits) if (ts >= v.arrive - pad && ts <= v.depart + pad) return p;
+  return null;
+}
+function routeAt(ts) {           // where on the recorded route were we at this time?
+  const P = S.points, near = 5 * 60 * 1000;
+  if (!P.length || ts < P[0].t - near || ts > P[P.length - 1].t + near) return null;
+  let lo = 0, hi = P.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (P[mid].t <= ts) lo = mid; else hi = mid; }
+  const a = P[lo], b = P[hi];
+  if (ts <= a.t) return a; if (ts >= b.t) return b;
+  if (b.t - a.t > 2 * GAP_MS) return ts - a.t <= near ? a : b.t - ts <= near ? b : null;
+  const k = (ts - a.t) / (b.t - a.t);
+  return { lat: a.lat + (b.lat - a.lat) * k, lng: a.lng + (b.lng - a.lng) * k };
+}
+async function placeForPhoto(m) {
+  let pt = null, by = null;
+  if (m.lat != null) { pt = { lat: m.lat, lng: m.lng }; by = 'location'; }
+  else if (m.t != null) {        // no GPS in the photo: use its time. At a stop? On the route? Just before/after a stop?
+    let p = placeAtTime(m.t, 0); if (p) return { placeId: p.id, by: 'time' };
+    const r = routeAt(m.t);
+    if (r) { pt = { lat: r.lat, lng: r.lng }; by = 'route'; }
+    else { p = placeAtTime(m.t, 10 * 60 * 1000); if (p) return { placeId: p.id, by: 'time' }; }
+  }
+  if (!pt) return { placeId: null, by: null };
+  let p = nearestPlace(pt, PHOTO_R);
+  if (!p) {                      // nowhere saved nearby: the photo makes its own pin
+    const when = m.t ?? Date.now();
+    p = { id: uid(), tripId: S.trip.id, kind: 'photo', lat: pt.lat, lng: pt.lng, name: '', area: '', note: '', visits: [{ arrive: when, depart: when }] };
+    S.places.push(p); await DB.put('places', p); queueGeocode(p);
+  } else if (p.kind === 'photo' && m.t != null) {
+    const v = p.visits[0]; v.arrive = Math.min(v.arrive, m.t); v.depart = Math.max(v.depart, m.t); await DB.put('places', p);
+  }
+  return { placeId: p.id, by };
+}
+async function storePhoto(blob, meta, opt = {}) {
+  const im = await loadImg(blob);
+  let full, thumb;
+  try { full = await shrink(im, 1600, .85); thumb = await shrink(im, 360, .75); } finally { URL.revokeObjectURL(im._u); }
+  const ph = { id: uid(), tripId: S.trip.id, placeId: null, t: meta.t, lat: meta.lat, lng: meta.lng, by: null, from: opt.from || null, added: Date.now(), thumb };
+  if (opt.placeId && S.places.some(p => p.id === opt.placeId)) { ph.placeId = opt.placeId; ph.by = opt.by || 'manual'; }
+  else { const r = await placeForPhoto(meta); ph.placeId = r.placeId; ph.by = r.by; }
+  await DB.put('files', full, ph.id); await DB.put('photos', ph);
+  S.photos.push(ph);
+  return ph;
+}
+async function importPhotos(files, placeId) {
+  if (!files.length) return;
+  await ensureTrip();
+  const hadPlaces = S.places.length;
+  let ok = 0, placed = 0, bad = 0, i = 0;
+  for (const f of files) {
+    toast(t('adding', { i: ++i, n: files.length }), 60000);
+    try { const ph = await storePhoto(f, photoMeta(await readExif(f)), { placeId }); ok++; if (ph.placeId) placed++; }
+    catch (e) { bad++; }
+  }
+  renderAll();
+  if (placeId && $('#placeDlg').open) openPlace(placeId);
+  if (!hadPlaces && S.places.length) fitTrip();
+  toast(t('added', { n: ok, p: placed }) + (bad ? ' · ' + t('photoFail', { n: bad }) : ''), 4500);
+}
+async function deletePhoto(id) {
+  const ph = S.photos.find(p => p.id === id); if (!ph) return;
+  S.photos = S.photos.filter(p => p.id !== id); dropThumb(id);
+  await DB.del('photos', id); await DB.del('files', id);
+  const pl = S.places.find(p => p.id === ph.placeId);
+  if (pl && pl.kind === 'photo' && !S.photos.some(p => p.placeId === pl.id)) await deletePlace(pl.id, true);
+}
+async function deletePlace(id, quiet) {
+  S.places = S.places.filter(p => p.id !== id);
+  await DB.del('places', id);
+  for (const ph of S.photos) if (ph.placeId === id) { ph.placeId = null; ph.by = null; await DB.put('photos', ph); }
+  if (CFG.cand && CFG.cand.placeId === id) { CFG.cand.placeId = null; CFG.cand.muted = true; saveCfg(); }
+  if (!quiet) renderAll();
+}
+
+/* ---------- Rendering ---------- */
+function renderAll() { drawRoute(); drawPins(); renderJournal(); renderLive(); renderTop(); }
+function renderTop() {
+  $('#tripName').textContent = S.trip ? S.trip.name : 'Trip Trail';
+  const chip = $('#buddyChip'), n = Share.liveCount();
+  chip.hidden = !(CFG.shareOn && CFG.buddies.length);
+  $('#buddyDot').classList.toggle('on', Share.conns.size > 0);
+  $('#buddyChipText').textContent = n ? t('chipLive', { n }) : t('chipBuddies');
+  const unread = Object.values(Share.unread).reduce((a, b) => a + b, 0), badge = $('#chatBadge');
+  badge.hidden = !unread; badge.textContent = unread;
+}
+function renderLive() {
+  const always = CFG.mode === 'always', btn = $('#trackBtn'), ring = $('#ring');
+  btn.textContent = S.tracking ? t(always ? 'pause' : 'stop') : t('start');
+  btn.classList.toggle('halt', S.tracking);
+  $('#modeAlways').setAttribute('aria-pressed', always); $('#modeManual').setAttribute('aria-pressed', !always);
+  const c = CFG.cand, now = Date.now(), fresh = S.lastFix && now - S.lastFixAt < 90000;
+  let title, sub, p = 0, txt = '5:00', cls = 'idle';
+  if (!S.tracking) { title = t(S.paused ? 'livePaused' : 'liveOff'); sub = t(S.paused ? 'livePausedSub' : 'liveOffSub'); }
+  else if (S.geoErr === 'blocked') { title = t('blocked'); sub = t('blockedSub'); }
+  else if (!fresh) { title = t('finding'); sub = t('findingSub'); }
+  else if (S.lastFix.acc > MAX_ACC) { title = t('weak'); sub = t('weakSub', { m: Math.round(S.lastFix.acc) }); }
+  else if (c && c.placeId) {
+    const pl = S.places.find(x => x.id === c.placeId), v = pl && (pl.visits.find(x => x.arrive === c.visit) || pl.visits[pl.visits.length - 1]);
+    title = pl ? placeLabel(pl) : t('moving'); sub = v ? t('stayedFor', { dur: F.dur(now - v.arrive) }) : '';
+    p = 1; txt = '✓'; cls = 'done';
+  }
+  else if (c && !c.muted && now - c.start >= 20000) {
+    const el = Math.min(STAY_MS, now - c.start);
+    title = t('hereFor', { time: F.clock(el) }); sub = t('savesAt'); p = el / STAY_MS; txt = F.clock(STAY_MS - el); cls = '';
+  }
+  else { title = t('moving'); sub = t('movingSub', { m: Math.round(S.lastFix.acc) }); }
+  $('#liveTitle').textContent = title; $('#liveSub').textContent = sub;
+  ring.className = 'ring ' + cls; ring.style.setProperty('--p', p); $('#ringText').textContent = txt;
+}
+function visitLine(v) {
+  return v.depart - v.arrive < 60000 ? F.time(v.arrive) : `${F.time(v.arrive)} – ${F.time(v.depart)} · ${F.dur(v.depart - v.arrive)}`;
+}
+function photosByVisit(p) {      // each photo goes under the visit closest to when it was taken
+  const out = p.visits.map(() => []);
+  for (const ph of S.photos) {
+    if (ph.placeId !== p.id) continue;
+    let best = 0, bd = Infinity;
+    if (ph.t != null) p.visits.forEach((v, i) => { const d = ph.t < v.arrive ? v.arrive - ph.t : ph.t > v.depart ? ph.t - v.depart : 0; if (d < bd) { bd = d; best = i; } });
+    out[best].push(ph);
+  }
+  return out;
+}
+function renderJournal() {
+  $('#journalTitle').textContent = S.trip ? S.trip.name : t('tripDefault');
+  const km = routeLength() / 1000;
+  $('#stats').innerHTML = [[S.places.length, t('stops')], [km < 10 ? km.toFixed(1) : Math.round(km), t('km')], [S.photos.length, t('photosLabel')]]
+    .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(l)}</span></div>`).join('');
+  const places = orderedPlaces(), num = new Map(places.map((p, i) => [p.id, i + 1]));
+  const loose = S.photos.filter(p => !p.placeId);
+  let h = '';
+  if (loose.length) h += `<div class="card"><div><b>${esc(t('unplaced'))} (${loose.length})</b><div class="muted">${esc(t('unplacedSub'))}</div></div>
+    <div class="grid">${loose.map((p, i) => `<button data-loose="${i}"><img src="${thumbURL(p)}" alt=""></button>`).join('')}</div></div>`;
+  if (!places.length && !loose.length) h += `<div class="empty"><b>${esc(t('emptyTitle'))}</b><span>${esc(t('emptySub'))}</span></div>`;
+  const entries = [];
+  for (const p of places) { const pv = photosByVisit(p); p.visits.forEach((v, i) => entries.push({ p, v, ph: pv[i] })); }
+  entries.sort((a, b) => a.v.arrive - b.v.arrive);
+  let day = '';
+  for (const e of entries) {
+    const d = new Date(e.v.arrive).toDateString();
+    if (d !== day) { day = d; h += `<div class="day"><b>${esc(F.day(e.v.arrive))}</b></div>`; }
+    const more = e.ph.length - 4;
+    h += `<button class="stop ${esc(e.p.kind)}" data-place="${esc(e.p.id)}"><span class="n">${num.get(e.p.id)}</span><span class="b">
+      <span class="nm">${esc(placeLabel(e.p))}</span>
+      <span class="mt">${esc(visitLine(e.v))}${e.p.area ? ' · ' + esc(e.p.area) : ''}${e.p.from ? ' · ' + esc(t('fromBuddy', { name: e.p.from })) : ''}</span>
+      ${e.ph.length ? `<span class="thumbs">${e.ph.slice(0, 4).map(x => `<img src="${thumbURL(x)}" alt="">`).join('')}${more > 0 ? `<span class="more">+${more}</span>` : ''}</span>` : ''}
+    </span></button>`;
+  }
+  $('#timeline').innerHTML = h;
+  $('#timeline')._loose = loose.map(p => p.id);
+}
+
+/* ---------- Stop details ---------- */
+let curPlace = null, pickFor = null;
+function openPlace(id) {
+  const p = S.places.find(x => x.id === id); if (!p) return;
+  curPlace = id;
+  $('#placeHead').textContent = placeLabel(p);
+  $('#placeName').value = p.name || ''; $('#placeNote').value = p.note || '';
+  $('#placeVisits').innerHTML = p.visits.map(v => `<div>${esc(F.day(v.arrive))} · ${esc(visitLine(v))}</div>`).join('')
+    + (p.area ? `<div>${esc(p.area)}</div>` : '') + (p.from ? `<div>${esc(t('fromBuddy', { name: p.from }))}</div>` : '');
+  const ph = S.photos.filter(x => x.placeId === id).sort((a, b) => (a.t || a.added) - (b.t || b.added));
+  $('#placePhotos').innerHTML = ph.map((x, i) => `<button data-i="${i}"><img src="${thumbURL(x)}" alt=""></button>`).join('');
+  $('#placePhotos')._ids = ph.map(x => x.id);
+  $('#placeGmaps').href = `https://www.google.com/maps/search/?api=1&query=${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+  $('#placeSend').hidden = !Share.conns.size;
+  if (!$('#placeDlg').open) $('#placeDlg').showModal();
+}
+async function savePlaceFields() {
+  const p = S.places.find(x => x.id === curPlace); if (!p) return;
+  p.name = $('#placeName').value.trim(); p.note = $('#placeNote').value.trim(); if (p.name) p.geoDone = true;
+  await DB.put('places', p); $('#placeHead').textContent = placeLabel(p); renderAll();
+}
+
+/* ---------- Photo viewer ---------- */
+const V = { ids: [], i: 0, url: null };
+async function openViewer(ids, i) { V.ids = ids.slice(); V.i = i; if (!$('#viewer').open) $('#viewer').showModal(); await showPhoto(); }
+async function showPhoto() {
+  const ph = S.photos.find(p => p.id === V.ids[V.i]);
+  if (!ph) { $('#viewer').close(); return; }
+  const blob = await DB.get('files', ph.id).catch(() => null);
+  if (V.url) URL.revokeObjectURL(V.url);
+  V.url = URL.createObjectURL(blob || ph.thumb); $('#vImg').src = V.url;
+  const how = ph.from ? t('byBuddy', { name: ph.from }) : ph.by ? t({ location: 'byLocation', time: 'byTime', route: 'byRoute', manual: 'byManual', buddy: 'byManual' }[ph.by] || 'byManual') : '';
+  $('#vCaption').textContent = [ph.t ? F.day(ph.t) + ' ' + F.time(ph.t) : '', how].filter(Boolean).join(' · ');
+  $('#vMove').innerHTML = `<option value="">${esc(t('noPlace'))}</option>` + orderedPlaces().map(p => `<option value="${esc(p.id)}"${p.id === ph.placeId ? ' selected' : ''}>${esc(placeLabel(p))}</option>`).join('');
+  $('#vPrev').disabled = V.i <= 0; $('#vNext').disabled = V.i >= V.ids.length - 1;
+  $('#vSend').hidden = !Share.conns.size;
+}
+
+/* ---------- Travel buddies: phone-to-phone over WebRTC (PeerJS) ----------
+   Each phone has a 6-character code. One side dials the other's code; after that both reconnect
+   automatically whenever both have the app open. Messages are small JSON objects; photos are sent
+   in pieces. Nothing is stored on a server. */
+const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PID = code => 'triptrail-v1-' + code;
+const newCode = () => [...crypto.getRandomValues(new Uint8Array(6))].map(x => CODE_ABC[x % 32]).join('');
+const buddy = code => CFG.buddies.find(b => b.code === code);
+const clip = (s, n) => String(s ?? '').slice(0, n);
+function loadPeerLib() {
+  if (window.Peer) return Promise.resolve();
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = PEER_LIB; s.crossOrigin = 'anonymous'; s.onload = res; s.onerror = () => { s.remove(); rej(new Error('lib')); }; document.head.append(s); });
+}
+const Share = {
+  peer: null, opened: false, state: 'off', conns: new Map(), live: new Map(), unread: {}, lastSent: 0,
+  dialing: new Set(), rx: new Map(), rxQ: Promise.resolve(), asks: [], asking: null,
+
+  liveCount() { let n = 0; for (const v of this.live.values()) if (Date.now() - v.t < 60000) n++; return n; },
+  wantsLoc() { return CFG.shareOn && CFG.shareLive && this.conns.size > 0; },
+  setState(s) { this.state = s; renderBuddies(); renderTop(); },
+
+  async start() {
+    if (this.peer || !CFG.shareOn) return;
+    if (!CFG.code) { CFG.code = newCode(); saveCfg(); }
+    this.setState('connecting');
+    try { await loadPeerLib(); } catch (e) { this.setState('error'); return; }
+    if (this.peer || !CFG.shareOn) return;
+    const peer = this.peer = new Peer(PID(CFG.code), { debug: 0 });
+    this.opened = false;
+    peer.on('open', () => { if (this.peer !== peer) return; this.opened = true; this.setState('ready'); this.dialAll(); });
+    peer.on('connection', c => this.onIncoming(c));
+    peer.on('disconnected', () => { if (this.peer === peer) this.setState('connecting'); });
+    peer.on('error', e => {
+      const ty = e && e.type;
+      if (ty === 'peer-unavailable' || this.peer !== peer) return;      // buddy just isn't online yet
+      this.setState(ty === 'unavailable-id' ? 'taken' : 'error');
+    });
+  },
+  stop() {
+    for (const c of this.conns.values()) try { c.close(); } catch (e) {}
+    this.conns.clear(); this.live.clear(); this.dialing.clear();
+    const p = this.peer; this.peer = null; if (p) try { p.destroy(); } catch (e) {}
+    this.setState('off'); drawBuddies(); syncWatch();
+  },
+  tick() {                       // runs every 20 s and when the app comes back to the front
+    if (!CFG.shareOn) return;
+    const p = this.peer;
+    if (!p) return void this.start();
+    if (p.destroyed || (p.disconnected && !this.opened)) { this.peer = null; try { p.destroy(); } catch (e) {} return void this.start(); }
+    if (p.disconnected) { try { p.reconnect(); } catch (e) { this.peer = null; this.start(); } return; }
+    if (p.open) { if (this.state !== 'ready') this.setState('ready'); this.dialAll(); }
+  },
+  dialAll() { for (const b of CFG.buddies) if (!this.isOpen(b.code)) this.dial(b.code); },
+  isOpen(code) { const c = this.conns.get(code); return !!(c && c.open); },
+  dial(code) {
+    if (!this.peer || !this.peer.open || this.dialing.has(code)) return;
+    this.dialing.add(code);
+    const c = this.peer.connect(PID(code), { reliable: true, serialization: 'json', metadata: { code: CFG.code, name: CFG.name } });
+    if (!c) { this.dialing.delete(code); return; }
+    c._ok = true;
+    this.wire(c, code, true);
+    setTimeout(() => { this.dialing.delete(code); if (!c.open) try { c.close(); } catch (e) {} }, 15000);
+  },
+  onIncoming(c) {
+    const md = c.metadata || {}, code = clip(md.code, 6);
+    if (c.peer !== PID(code) || code === CFG.code) { c.close(); return; }
+    c._buf = []; c._ok = !!buddy(code);
+    c.on('data', d => { if (c._ok) this.onData(code, d); else if (c._buf.length < 50) c._buf.push(d); });
+    if (c._ok) return this.wire(c, code, false);
+    this.asks.push({ c, code, name: clip(md.name, 24) || t('buddy') }); this.nextAsk();   // a stranger: ask first
+  },
+  nextAsk() {
+    if (this.asking || !this.asks.length) return;
+    const a = this.asking = this.asks.shift();
+    $('#askHead').textContent = t('wantsToJoin', { name: a.name }); $('#askText').textContent = t('wantsText');
+    $('#askYes').textContent = t('accept'); $('#askNo').textContent = t('decline');
+    $('#askDlg').showModal();
+  },
+  answer(yes) {
+    const a = this.asking; this.asking = null; $('#askDlg').close(); if (!a) return;
+    if (yes) {
+      if (!buddy(a.code)) { CFG.buddies.push({ code: a.code, name: a.name, seen: Date.now() }); saveCfg(); }
+      a.c._ok = true; this.wire(a.c, a.code, false);
+      for (const d of a.c._buf) this.onData(a.code, d); a.c._buf = [];
+    } else try { a.c.close(); } catch (e) {}
+    this.nextAsk();
+  },
+  wire(c, code, outgoing) {
+    c._out = outgoing;
+    const opened = () => {
+      const ex = this.conns.get(code);
+      if (ex && ex !== c && ex.open) {          // both phones dialled at once: keep the call placed by the smaller code
+        const mine = outgoing ? CFG.code : code, theirs = ex._out ? CFG.code : code;
+        if (!(mine < theirs)) { c._dup = true; try { c.close(); } catch (e) {} return; }
+        ex._dup = true; try { ex.close(); } catch (e) {}
+      }
+      const first = !ex || !ex.open;
+      this.conns.set(code, c); this.dialing.delete(code);
+      this.send(code, { k: 'hello', name: CFG.name });
+      flushChat(code);
+      if (S.lastFix && Date.now() - S.lastFixAt < 120000) this.sendLoc(S.lastFix, true);
+      const b = buddy(code);
+      if (first && b) toast(t('buddyConnected', { name: b.name }));
+      renderBuddies(); renderTop(); syncWatch();
+    };
+    if (c.open) opened(); else c.on('open', opened);
+    if (outgoing) c.on('data', d => this.onData(code, d));
+    c.on('close', () => {
+      if (this.conns.get(code) !== c) return;
+      this.conns.delete(code); this.live.delete(code);
+      const b = buddy(code); if (b) { b.seen = Date.now(); saveCfg(); }
+      renderBuddies(); renderTop(); drawBuddies(); syncWatch();
+    });
+    c.on('error', () => {});
+  },
+  send(code, msg) { const c = this.conns.get(code); if (c && c.open) { try { c.send(msg); return true; } catch (e) {} } return false; },
+  sendLoc(f, force) {
+    if (!CFG.shareLive || !this.conns.size) return;
+    const now = Date.now(); if (!force && now - this.lastSent < 2000) return;   // at most one update every 2 s
+    this.lastSent = now;
+    for (const code of this.conns.keys()) this.send(code, { k: 'loc', lat: f.lat, lng: f.lng, acc: f.acc });
+  },
+  onData(code, d) {
+    const b = buddy(code); if (!b || !d || typeof d !== 'object') return;
+    if (d.k === 'hello') { const nm = clip(d.name, 24).trim(); if (nm && nm !== b.name) { b.name = nm; saveCfg(); } renderBuddies(); drawBuddies(); }
+    else if (d.k === 'loc') { if (isNum(d.lat) && isNum(d.lng) && Math.abs(d.lat) <= 90 && Math.abs(d.lng) <= 180) { this.live.set(code, { lat: d.lat, lng: d.lng, acc: +d.acc || 0, t: Date.now() }); drawBuddies(); renderBuddiesSoon(); renderTop(); } }
+    else if (d.k === 'locoff') { this.live.delete(code); drawBuddies(); renderBuddies(); renderTop(); }
+    else if (d.k === 'chat') { saveChat({ id: clip(d.id, 40), buddy: code, from: 'them', text: clip(d.text, 500), t: +d.t || Date.now() }); this.send(code, { k: 'ack', id: d.id }); }
+    else if (d.k === 'ack') markSent(clip(d.id, 40));
+    else if (d.k === 'place' || d.k === 'file') this.rxQ = this.rxQ.then(() => d.k === 'place' ? this.onPlace(b, d) : this.onFile(b, d)).catch(e => console.error(e));
+  },
+  findSid(sid) { return sid ? S.places.find(p => p.sid === sid || p.id === sid) : null; },
+  async onPlace(b, d) {
+    if (!isNum(d.lat) || !isNum(d.lng)) return;
+    await ensureTrip();
+    const sid = clip(d.sid, 40), name = clip(d.name, 60);
+    let p = this.findSid(sid) || nearestPlace(d, STAY_R);
+    if (!p) {
+      const visits = (Array.isArray(d.visits) ? d.visits : []).filter(v => v && isNum(v.arrive) && isNum(v.depart)).slice(0, 20).map(v => ({ arrive: v.arrive, depart: v.depart }));
+      p = { id: uid(), tripId: S.trip.id, kind: 'shared', sid, from: b.name, lat: d.lat, lng: d.lng, name, area: clip(d.area, 60), note: clip(d.note, 600), geoDone: true,
+        visits: visits.length ? visits : [{ arrive: Date.now(), depart: Date.now() }] };
+      S.places.push(p);
+    } else if (!p.sid) p.sid = sid;
+    await DB.put('places', p);
+    renderAll(); logSys(b.code, t('gotPlace', { who: b.name, name })); toast(t('gotPlace', { who: b.name, name }));
+  },
+  async onFile(b, d) {
+    const key = b.code + ':' + clip(d.id, 40), n = d.n | 0, i = d.i | 0;
+    if (n < 1 || n > 500 || i < 0 || i >= n || typeof d.d !== 'string' || d.d.length > 16000) return;
+    let r = this.rx.get(key);
+    if (!r) { if (i !== 0) return; r = { parts: [], meta: d.meta && typeof d.meta === 'object' ? d.meta : {} }; this.rx.set(key, r); }
+    r.parts[i] = d.d;
+    if (r.parts.filter(Boolean).length < n) return;
+    this.rx.delete(key);
+    const bin = atob(r.parts.join('')), u = new Uint8Array(bin.length);
+    for (let j = 0; j < bin.length; j++) u[j] = bin.charCodeAt(j);
+    await ensureTrip();
+    const m = r.meta, pl = this.findSid(clip(m.sid, 40));
+    const meta = { t: isNum(m.t) ? m.t : null, lat: isNum(m.lat) ? m.lat : null, lng: isNum(m.lng) ? m.lng : null };
+    try { await storePhoto(new Blob([u], { type: 'image/jpeg' }), meta, { from: b.name, placeId: pl ? pl.id : null, by: 'buddy' }); } catch (e) { return; }
+    renderAll(); if (curPlace && $('#placeDlg').open) openPlace(curPlace);
+    if (!pl) { logSys(b.code, t('gotPhoto', { who: b.name })); toast(t('gotPhoto', { who: b.name })); }
+  },
+  async sendPhotoTo(code, ph, sid) {
+    const blob = await DB.get('files', ph.id); if (!blob) return;
+    const u = new Uint8Array(await blob.arrayBuffer()); let bin = '';
+    for (let i = 0; i < u.length; i += 8192) bin += String.fromCharCode.apply(null, u.subarray(i, i + 8192));
+    const b64 = btoa(bin), CH = 12000, n = Math.ceil(b64.length / CH), id = uid();
+    for (let i = 0; i < n; i++) {
+      const c = this.conns.get(code); if (!c || !c.open) return;
+      const msg = { k: 'file', id, i, n, d: b64.slice(i * CH, (i + 1) * CH) };
+      if (i === 0) msg.meta = { t: ph.t, lat: ph.lat, lng: ph.lng, sid: sid || null };
+      c.send(msg);
+      const dc = c.dataChannel; let waited = 0;
+      while (dc && dc.bufferedAmount > 400000 && waited++ < 400) await sleep(25);
+      if (i % 6 === 5) await sleep(0);
+    }
+  },
+  async sendPlace(id) {
+    const codes = [...this.conns.keys()], p = S.places.find(x => x.id === id);
+    if (!codes.length || !p) { toast(t('notConnected')); return; }
+    const photos = S.photos.filter(x => x.placeId === id), sid = p.sid || p.id, name = placeLabel(p);
+    toast(t('sentPlace', { name }));
+    for (const code of codes) {
+      this.send(code, { k: 'place', sid, name, area: p.area || '', lat: p.lat, lng: p.lng, visits: p.visits, note: p.note || '' });
+      for (const ph of photos) await this.sendPhotoTo(code, ph, sid);
+      logSys(code, t('sentPlace', { name }));
+    }
+  },
+  async sendPhoto(id) {
+    const codes = [...this.conns.keys()], ph = S.photos.find(x => x.id === id);
+    if (!codes.length || !ph) { toast(t('notConnected')); return; }
+    const pl = S.places.find(p => p.id === ph.placeId);
+    for (const code of codes) { await this.sendPhotoTo(code, ph, pl ? pl.sid || null : null); logSys(code, t('sentPhoto')); }
+    toast(t('sentPhoto'));
+  }
+};
+function drawBuddies() {
+  if (!map) return;
+  layers.buddies.clearLayers();
+  for (const [code, v] of Share.live) {
+    const b = buddy(code); if (!b) continue;
+    const stale = Date.now() - v.t > 60000;
+    const html = `<div class="bud-pin ${stale ? 'stale' : ''}"><b>${esc((b.name || '?').trim().charAt(0).toUpperCase())}</b><span>${esc(b.name)}</span></div>`;
+    layers.buddies.addLayer(L.marker([v.lat, v.lng], { icon: L.divIcon({ className: '', html, iconSize: [90, 62], iconAnchor: [45, 22] }), zIndexOffset: 800, interactive: false }));
+  }
+}
+let budTimer;
+const renderBuddiesSoon = () => { if (!budTimer) budTimer = setTimeout(() => { budTimer = 0; renderBuddies(); }, 3000); };
+function renderBuddies() {
+  $('#shareOn').checked = CFG.shareOn; $('#shareLive').checked = CFG.shareLive;
+  if (document.activeElement !== $('#myName')) $('#myName').value = CFG.name;
+  $('#netStatus').textContent = t({ off: 'netOff', connecting: 'netConnecting', ready: 'netReady', error: 'netError', taken: 'netCodeTaken' }[Share.state]);
+  $('#codeCard').hidden = !CFG.shareOn;
+  $('#myCode').textContent = CFG.code ? CFG.code.slice(0, 3) + ' ' + CFG.code.slice(3) : '';
+  $('#buddyList').innerHTML = CFG.buddies.map(b => {
+    const live = Share.live.get(b.code), on = Share.isOpen(b.code);
+    let st = on ? t(live && Date.now() - live.t < 60000 ? 'buddyLive' : 'buddyOnline') : t('buddyOffline') + (b.seen ? ' · ' + t('lastSeen', { ago: F.ago(b.seen) }) : '');
+    if (on && live && S.lastFix) st += ' · ' + t('away', { d: F.m(dist(live, S.lastFix)) });
+    const un = Share.unread[b.code];
+    return `<div class="card"><div class="buddy"><div class="ava">${esc((b.name || '?').trim().charAt(0).toUpperCase())}</div>
+      <div class="grow" style="min-width:0"><b>${esc(b.name)}</b><div class="muted"><span class="dot ${on ? 'on' : ''}" style="display:inline-block;margin-right:6px"></span>${esc(st)}</div></div></div>
+      <div class="row"><button class="btn sm pri" data-chat="${esc(b.code)}">${esc(t('chat'))}${un ? ' (' + un + ')' : ''}</button>
+      <button class="btn sm" data-find="${esc(b.code)}"${live ? '' : ' disabled'}>${esc(t('find'))}</button>
+      <button class="btn sm danger" data-remove="${esc(b.code)}">${esc(t('remove'))}</button></div></div>`;
+  }).join('') || (CFG.shareOn ? `<div class="empty"><span>${esc(t('noBuddies'))}</span></div>` : '');
+}
+
+/* ---------- Chat ---------- */
+let chatWith = null;
+function msgHTML(m) {
+  if (m.from === 'sys') return `<div class="msg sys">${esc(m.text)}</div>`;
+  return `<div class="msg ${m.from === 'me' ? 'me' : ''}" data-id="${esc(m.id)}">${esc(m.text)}<small>${esc(F.time(m.t))}${m.from === 'me' && !m.sent ? ' · ' + esc(t('queued')) : ''}</small></div>`;
+}
+async function openChat(code) {
+  const b = buddy(code); if (!b) return;
+  chatWith = code; delete Share.unread[code]; renderTop(); renderBuddies();
+  $('#chatHead').textContent = b.name;
+  const all = (await DB.by('chat', 'buddy', code)).sort((a, b) => a.t - b.t);
+  const log = $('#chatLog'); log.innerHTML = all.map(msgHTML).join('');
+  if (!$('#chatDlg').open) $('#chatDlg').showModal();
+  log.scrollTop = log.scrollHeight;
+}
+async function saveChat(m) {
+  await DB.put('chat', m).catch(() => {});
+  if (chatWith === m.buddy && $('#chatDlg').open) { const log = $('#chatLog'); log.insertAdjacentHTML('beforeend', msgHTML(m)); log.scrollTop = log.scrollHeight; }
+  else if (m.from === 'them') { Share.unread[m.buddy] = (Share.unread[m.buddy] || 0) + 1; renderTop(); renderBuddies(); const b = buddy(m.buddy); toast((b ? b.name : '') + ': ' + m.text, 4000); }
+}
+const logSys = (code, text) => saveChat({ id: uid(), buddy: code, from: 'sys', text, t: Date.now() });
+function sendChat(code, text) {
+  const m = { id: uid(), buddy: code, from: 'me', text, t: Date.now(), sent: false };
+  saveChat(m); Share.send(code, { k: 'chat', id: m.id, text, t: m.t });
+}
+async function flushChat(code) {   // deliver anything typed while the buddy was away
+  const all = await DB.by('chat', 'buddy', code).catch(() => []);
+  for (const m of all.sort((a, b) => a.t - b.t)) if (m.from === 'me' && !m.sent) Share.send(code, { k: 'chat', id: m.id, text: m.text, t: m.t });
+}
+async function markSent(id) {
+  const m = await DB.get('chat', id).catch(() => null); if (!m || m.sent) return;
+  m.sent = true; await DB.put('chat', m);
+  const el = document.querySelector(`.msg[data-id="${CSS.escape(id)}"] small`); if (el) el.textContent = F.time(m.t);
+}
+
+/* ---------- Me: trips, settings, export ---------- */
+function renderMe() {
+  $('#tripList').innerHTML = S.trips.map(x => `<button class="btn ${S.trip && x.id === S.trip.id ? 'pri' : ''}" data-trip="${esc(x.id)}" style="justify-content:flex-start">${esc(x.name)}</button>`).join('');
+  $('#curTripCard').hidden = !S.trip;
+  if (S.trip && document.activeElement !== $('#tripRename')) $('#tripRename').value = S.trip.name;
+  $('#keepAwake').checked = CFG.keepAwake; $('#langSel').value = LANG;
+}
+function exportTrip() {
+  if (!S.trip) return;
+  const data = { app: 'trip-trail', v: 1, trip: S.trip, places: S.places, points: S.points.map(p => [p.t, +p.lat.toFixed(6), +p.lng.toFixed(6)]) };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+  a.download = (S.trip.name.replace(/[\\/:*?"<>|]+/g, '').trim() || 'trip') + '.json';
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 15000);
+}
+async function importTrip(file) {
+  try {
+    const d = JSON.parse(await file.text());
+    if (!d || d.app !== 'trip-trail' || !Array.isArray(d.places) || !Array.isArray(d.points)) throw 0;
+    const tr = { id: uid(), name: clip(d.trip && d.trip.name, 40) || t('tripDefault'), created: Date.now() };
+    await DB.put('trips', tr); S.trips.push(tr);
+    for (const p of d.places) {
+      if (!isNum(p.lat) || !isNum(p.lng)) continue;
+      const visits = (Array.isArray(p.visits) ? p.visits : []).filter(v => v && isNum(v.arrive) && isNum(v.depart)).map(v => ({ arrive: v.arrive, depart: v.depart }));
+      await DB.put('places', { id: uid(), tripId: tr.id, kind: ['stay', 'photo', 'shared'].includes(p.kind) ? p.kind : 'stay', lat: p.lat, lng: p.lng, name: clip(p.name, 60), area: clip(p.area, 60), note: clip(p.note, 600), geoDone: true, visits: visits.length ? visits : [{ arrive: Date.now(), depart: Date.now() }] });
+    }
+    for (const q of d.points) if (Array.isArray(q) && isNum(q[0]) && isNum(q[1]) && isNum(q[2])) await DB.put('points', { tripId: tr.id, t: q[0], lat: q[1], lng: q[2] });
+    await loadTrip(tr.id); toast(t('imported'));
+  } catch (e) { toast(t('importFail')); }
+}
+async function loadSample() {    // a made-up day so the app can be explored before a real trip
+  const tr = await createTrip(t('sampleName'));
+  const d0 = new Date(); d0.setDate(d0.getDate() - 1); d0.setHours(9, 30, 0, 0);
+  const at = (h, m) => new Date(d0).setHours(h, m, 0, 0);
+  const stops = [
+    ['Pastéis de Belém', 38.69750, -9.20320, at(9, 40), at(10, 15), 2, 28],
+    ['Torre de Belém', 38.69158, -9.21597, at(10, 40), at(11, 20), 1, 200],
+    ['Time Out Market', 38.70700, -9.14590, at(12, 30), at(13, 40), 2, 12],
+    ['Miradouro de Santa Luzia', 38.71170, -9.13010, at(14, 30), at(15, 0), 1, 320],
+    ['Castelo de S. Jorge', 38.71390, -9.13350, at(15, 20), at(16, 30), 2, 265]
+  ];
+  let prev = null;
+  for (const [name, lat, lng, arrive, depart, nPh, hue] of stops) {
+    if (prev) for (let i = 1; i <= 14; i++) {
+      const k = i / 15, wob = Math.sin(k * Math.PI) * .0022;
+      const p = { tripId: tr.id, t: prev.depart + (arrive - prev.depart) * k, lat: prev.lat + (lat - prev.lat) * k + wob, lng: prev.lng + (lng - prev.lng) * k + wob * .6 };
+      S.points.push(p); await DB.put('points', p);
+    }
+    const here = { tripId: tr.id, t: arrive, lat, lng }; S.points.push(here); await DB.put('points', here);
+    const pl = { id: uid(), tripId: tr.id, kind: 'stay', lat, lng, name, area: 'Lisboa', note: '', geoDone: true, visits: [{ arrive, depart }] };
+    S.places.push(pl); await DB.put('places', pl);
+    for (let i = 0; i < nPh; i++) {
+      const c = document.createElement('canvas'); c.width = 1200; c.height = 900;
+      const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 1200, 900);
+      gr.addColorStop(0, `hsl(${hue + i * 25} 85% 62%)`); gr.addColorStop(1, `hsl(${hue + 70 + i * 25} 80% 42%)`);
+      g.fillStyle = gr; g.fillRect(0, 0, 1200, 900);
+      g.fillStyle = 'rgba(255,255,255,.92)'; g.font = '800 64px system-ui,sans-serif'; g.fillText(name, 60, 800);
+      g.font = '600 34px system-ui,sans-serif'; g.fillText('Sample photo', 60, 850);
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .8));
+      await storePhoto(blob, { t: arrive + (i + 1) * 9 * 60000, lat, lng }, { placeId: pl.id, by: 'location' });
+    }
+    prev = { lat, lng, depart };
+  }
+  renderAll(); renderMe(); fitTrip(); toast(t('sampleLoaded'));
+}
+
+/* ---------- Wiring ---------- */
+function setTab(name) {
+  $('#app').dataset.tab = name;
+  $$('.tab').forEach(b => b.dataset.tab === name ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  if (name === 'map' && map) setTimeout(() => map.invalidateSize(), 50);
+  if (name === 'buddies') renderBuddies();
+  if (name === 'me') renderMe();
+}
+function pickPhotos(placeId) { pickFor = placeId || null; const f = $('#filePick'); f.value = ''; f.click(); }
+function bind() {
+  $$('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  $('#tripBtn').addEventListener('click', () => setTab('me'));
+  $('#buddyChip').addEventListener('click', () => setTab('buddies'));
+  $('#trackBtn').addEventListener('click', () => S.tracking ? stopTracking() : startTracking());
+  for (const b of [$('#modeAlways'), $('#modeManual')]) b.addEventListener('click', () => {
+    CFG.mode = b.dataset.mode; saveCfg();
+    if (CFG.mode === 'always' && !S.tracking) startTracking(); else { S.paused = false; renderLive(); }
+  });
+  $('#recenter').addEventListener('click', () => {
+    S.follow = true; $('#recenter').classList.add('on');
+    if (S.lastFix && map) map.setView([S.lastFix.lat, S.lastFix.lng], Math.max(map.getZoom(), 16));
+    if ('geolocation' in navigator) navigator.geolocation.getCurrentPosition(onPos, onGeoErr, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+  });
+  $('#pinHere').addEventListener('click', pinHere);
+  $('#addPhotos').addEventListener('click', () => pickPhotos());
+  $('#addPhotos2').addEventListener('click', () => pickPhotos());
+  $('#filePick').addEventListener('change', e => importPhotos([...e.target.files], pickFor));
+  $('#timeline').addEventListener('click', e => {
+    const s = e.target.closest('[data-place]'); if (s) return openPlace(s.dataset.place);
+    const l = e.target.closest('[data-loose]'); if (l) openViewer($('#timeline')._loose, +l.dataset.loose);
+  });
+  // dialogs: Close buttons, and tapping the dimmed backdrop
+  $$('dialog').forEach(d => {
+    d.addEventListener('click', e => { if (e.target === d && d.id !== 'askDlg') d.close(); });
+    $$('[data-close]', d).forEach(b => b.addEventListener('click', () => d.close()));
+  });
+  $('#askDlg').addEventListener('cancel', e => e.preventDefault());
+  $('#placeName').addEventListener('change', savePlaceFields); $('#placeNote').addEventListener('change', savePlaceFields);
+  $('#placeDlg').addEventListener('close', () => { curPlace = null; });
+  $('#placePhotos').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) openViewer($('#placePhotos')._ids, +b.dataset.i); });
+  $('#placeAdd').addEventListener('click', () => pickPhotos(curPlace));
+  $('#placeSend').addEventListener('click', () => Share.sendPlace(curPlace));
+  confirmTap($('#placeDelete'), async () => { const id = curPlace; $('#placeDlg').close(); await deletePlace(id); });
+  $('#vPrev').addEventListener('click', () => { if (V.i > 0) { V.i--; showPhoto(); } });
+  $('#vNext').addEventListener('click', () => { if (V.i < V.ids.length - 1) { V.i++; showPhoto(); } });
+  $('#vMove').addEventListener('change', async e => {
+    const ph = S.photos.find(p => p.id === V.ids[V.i]); if (!ph) return;
+    ph.placeId = e.target.value || null; ph.by = ph.placeId ? 'manual' : null; await DB.put('photos', ph);
+    renderAll(); if (curPlace) openPlace(curPlace); showPhoto();
+  });
+  $('#vSend').addEventListener('click', () => Share.sendPhoto(V.ids[V.i]));
+  confirmTap($('#vDelete'), async () => {
+    await deletePhoto(V.ids[V.i]); V.ids.splice(V.i, 1); V.i = Math.min(V.i, V.ids.length - 1);
+    renderAll(); if (curPlace && S.places.some(p => p.id === curPlace)) openPlace(curPlace); else if (curPlace) $('#placeDlg').close();
+    if (V.ids.length) showPhoto(); else $('#viewer').close();
+  });
+  $('#viewer').addEventListener('close', () => { if (V.url) { URL.revokeObjectURL(V.url); V.url = null; } $('#vImg').removeAttribute('src'); });
+  // buddies
+  $('#myName').addEventListener('change', e => { CFG.name = e.target.value.trim().slice(0, 24); saveCfg(); for (const code of Share.conns.keys()) Share.send(code, { k: 'hello', name: CFG.name }); });
+  $('#shareOn').addEventListener('change', e => {
+    if (e.target.checked && !CFG.name) { e.target.checked = false; toast(t('nameFirst')); $('#myName').focus(); return; }
+    CFG.shareOn = e.target.checked; saveCfg(); CFG.shareOn ? Share.start() : Share.stop();
+  });
+  $('#shareLive').addEventListener('change', e => {
+    CFG.shareLive = e.target.checked; saveCfg();
+    if (!CFG.shareLive) for (const code of Share.conns.keys()) Share.send(code, { k: 'locoff' });
+    else if (S.lastFix) Share.sendLoc(S.lastFix, true);
+    syncWatch();
+  });
+  $('#shareInvite').addEventListener('click', async () => {
+    const text = t('inviteText', { url: location.origin + location.pathname, code: CFG.code });
+    try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(text); toast(t('copied')); } catch (e) { toast(CFG.code); }
+  });
+  $('#addBuddyForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const code = $('#buddyCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length !== 6 || [...code].some(ch => !CODE_ABC.includes(ch)) || code === CFG.code) { toast(t('badCode')); return; }
+    if (!buddy(code)) { CFG.buddies.push({ code, name: t('buddy') + ' ' + code, seen: 0 }); saveCfg(); }
+    $('#buddyCode').value = ''; toast(t('connectingTo', { code })); renderBuddies(); renderTop(); Share.tick(); Share.dial(code);
+  });
+  $('#buddyList').addEventListener('click', e => {
+    const c = e.target.closest('[data-chat]'); if (c) return openChat(c.dataset.chat);
+    const f = e.target.closest('[data-find]');
+    if (f) { const v = Share.live.get(f.dataset.find); if (v && map) { S.follow = false; setTab('map'); map.setView([v.lat, v.lng], Math.max(map.getZoom(), 16)); } return; }
+    const r = e.target.closest('[data-remove]');
+    if (r) {
+      if (!r.dataset.armed) { r.dataset.armed = '1'; r.textContent = t('confirmDelete'); return; }
+      const code = r.dataset.remove, conn = Share.conns.get(code);
+      CFG.buddies = CFG.buddies.filter(b => b.code !== code); saveCfg();
+      if (conn) try { conn.close(); } catch (err) {}
+      Share.conns.delete(code); Share.live.delete(code); DB.delBy('chat', 'buddy', code).catch(() => {});
+      renderBuddies(); renderTop(); drawBuddies();
+    }
+  });
+  $('#chatForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#chatInput').value.trim(); if (!v || !chatWith) return; $('#chatInput').value = ''; sendChat(chatWith, v); });
+  $('#chatDlg').addEventListener('close', () => { chatWith = null; });
+  $('#askYes').addEventListener('click', () => Share.answer(true));
+  $('#askNo').addEventListener('click', () => Share.answer(false));
+  // me
+  $('#tripList').addEventListener('click', e => { const b = e.target.closest('[data-trip]'); if (b) loadTrip(b.dataset.trip); });
+  $('#newTripForm').addEventListener('submit', async e => { e.preventDefault(); const v = $('#newTripName').value; $('#newTripName').value = ''; await createTrip(v); setTab('map'); });
+  $('#tripRename').addEventListener('change', async e => { if (!S.trip) return; S.trip.name = e.target.value.trim().slice(0, 40) || t('tripDefault'); await DB.put('trips', S.trip); renderAll(); renderMe(); });
+  $('#exportBtn').addEventListener('click', exportTrip);
+  $('#importBtn').addEventListener('click', () => { const f = $('#importPick'); f.value = ''; f.click(); });
+  $('#importPick').addEventListener('change', e => { if (e.target.files[0]) importTrip(e.target.files[0]); });
+  confirmTap($('#deleteTrip'), () => S.trip && deleteTrip(S.trip.id));
+  $('#keepAwake').addEventListener('change', e => { CFG.keepAwake = e.target.checked; saveCfg(); CFG.keepAwake ? holdWake() : dropWake(); });
+  $('#langSel').addEventListener('change', e => { LANG = CFG.lang = e.target.value; saveCfg(); applyI18n(); renderAll(); renderBuddies(); renderMe(); });
+  $('#sampleBtn').addEventListener('click', async () => { await loadSample(); setTab('map'); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    holdWake(); if (S.watchId != null) { watch(); poll(); } Share.tick();   // phones often stall location while in the background
+  });
+  window.addEventListener('online', () => { pumpGeo(); Share.tick(); });
+}
+async function init() {
+  try { Object.assign(CFG, await DB.get('meta', 'cfg') || {}); }
+  catch (e) { LANG = pickLang(); applyI18n(); toast(t('storageFail'), 20000); }
+  LANG = pickLang(CFG.lang); applyI18n();
+  initMap(); bind(); setTab('map');
+  try { S.trips = (await DB.all('trips')).sort((a, b) => a.created - b.created); } catch (e) {}
+  await loadTrip(S.trips.some(x => x.id === CFG.currentTrip) ? CFG.currentTrip : (S.trips[0] ? S.trips[0].id : null));
+  renderBuddies();
+  const join = (location.hash.match(/^#join=([A-Za-z0-9]{6})$/) || [])[1];
+  if (join) { setTab('buddies'); $('#buddyCode').value = join.toUpperCase(); }
+  if (CFG.shareOn) Share.start();
+  if (CFG.mode === 'always' || CFG.tracking) startTracking();
+  setInterval(renderLive, 1000); setInterval(poll, 20000);
+  setInterval(() => { Share.tick(); drawBuddies(); if ($('#app').dataset.tab === 'buddies') renderBuddies(); renderTop(); }, 20000);
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+window.__tt = { S, Share, DB, handleFix, importPhotos, cfg: () => CFG };   // handy for debugging in the browser console
+init();
+</script>
+</body>
+</html>
